@@ -1,0 +1,142 @@
+name: wheels
+
+# Build one py3-none wheel per platform by bundling the official binary from
+# the browser repo's GitHub release (the same asset the README tells users to
+# download). No compilation happens here — all four wheels build on one
+# Ubuntu runner; native runners are only needed to *test* them.
+#
+# Modeled on zignal's python.yml (matrix -> build -> test-the-wheel ->
+# publish), minus everything a C extension needs: no per-Python builds,
+# no cross-compilation, no auditwheel/delocate.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "browser release tag to bundle (nightly or a version tag)"
+        default: "nightly"
+      publish:
+        description: "where to publish"
+        type: choice
+        options: [none, testpypi, pypi]
+        default: none
+
+env:
+  BROWSER_REPO: lightpanda-io/browser
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        include:
+          - asset: lightpanda-x86_64-linux
+            plat: manylinux_2_35_x86_64
+          - asset: lightpanda-aarch64-linux
+            plat: manylinux_2_35_aarch64
+          - asset: lightpanda-aarch64-macos
+            plat: macosx_14_0_arm64
+          - asset: lightpanda-x86_64-macos
+            plat: macosx_13_0_x86_64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Download the release binary
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "${{ inputs.release }}" -R "$BROWSER_REPO" \
+            -p "${{ matrix.asset }}" -O lightpanda-bin
+          chmod +x lightpanda-bin
+          ls -la lightpanda-bin
+
+      - name: Set wheel version from tag
+        if: inputs.release != 'nightly'
+        run: |
+          # Wheel version == browser release tag (PEP 440 expects no leading v).
+          tag="${{ inputs.release }}"
+          sed -i "s/^version = .*/version = \"${tag#v}\"/" pyproject.toml
+          grep '^version' pyproject.toml
+
+      - name: Build wheel
+        env:
+          LIGHTPANDA_BIN: ${{ github.workspace }}/lightpanda-bin
+          LIGHTPANDA_PLAT: ${{ matrix.plat }}
+        run: uv build --wheel
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.plat }}
+          path: dist/*.whl
+
+  test:
+    needs: build
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            plat: manylinux_2_35_x86_64
+          - runner: ubuntu-24.04-arm
+            plat: manylinux_2_35_aarch64
+          - runner: macos-14
+            plat: macosx_14_0_arm64
+          - runner: macos-15-intel
+            plat: macosx_13_0_x86_64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: wheel-${{ matrix.plat }}
+          path: dist
+
+      - name: Install the wheel into a clean venv
+        run: |
+          uv venv wheel-env
+          uv pip install --python wheel-env dist/*.whl pytest
+
+      - name: Run the test suite against the installed wheel
+        run: |
+          # Resolve the *bundled* binary and pin the tests to it; run from
+          # outside the checkout so the source tree can't shadow the install.
+          BIN=$(./wheel-env/bin/python -c "from lightpanda.client import find_binary; print(find_binary())")
+          echo "bundled binary: $BIN"
+          mkdir -p /tmp/wheeltest && cp -r tests /tmp/wheeltest/
+          cd /tmp/wheeltest
+          LIGHTPANDA_BIN="$BIN" "$GITHUB_WORKSPACE"/wheel-env/bin/python -m pytest tests -q
+
+      - name: CLI smoke
+        run: ./wheel-env/bin/lightpanda version
+
+  publish:
+    needs: test
+    if: inputs.publish != 'none'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ${{ inputs.publish }}
+    permissions:
+      id-token: write  # PyPI trusted publishing
+    steps:
+      - uses: astral-sh/setup-uv@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheel-*
+          merge-multiple: true
+          path: dist
+
+      - name: Publish
+        run: |
+          if [ "${{ inputs.publish }}" = "testpypi" ]; then
+            uv publish --publish-url https://test.pypi.org/legacy/ dist/*.whl
+          else
+            uv publish dist/*.whl
+          fi
