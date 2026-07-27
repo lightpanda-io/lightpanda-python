@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 from setuptools import setup
+from setuptools.command.bdist_wheel import bdist_wheel
 from setuptools.command.build_py import build_py
 from setuptools.dist import Distribution
 
@@ -54,7 +55,18 @@ class BinaryDistribution(Distribution):
         return True
 
 
+class BinaryWheel(bdist_wheel):
+    """The wheel is platform-specific (bundled binary) but Python-version
+    independent — tag it py3-none-<plat>. LIGHTPANDA_PLAT overrides the
+    platform (CI sets e.g. manylinux_2_35_x86_64 to match the release
+    runner's glibc floor)."""
+
+    def get_tag(self):
+        _, _, plat = super().get_tag()
+        return "py3", "none", os.environ.get("LIGHTPANDA_PLAT", plat)
+
+
 setup(
-    cmdclass={"build_py": BuildPyWithBinary},
+    cmdclass={"build_py": BuildPyWithBinary, "bdist_wheel": BinaryWheel},
     distclass=BinaryDistribution,
 )

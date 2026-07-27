@@ -4,6 +4,10 @@ Lightpanda for Python: scrape and automate the web with `pip install lightpanda`
 
 [Lightpanda](https://lightpanda.io) is a lightweight headless browser — an order of magnitude less memory than Chrome stacks. The wheel bundles the browser binary; there is no second install step.
 
+```bash
+uv add lightpanda        # or: uv pip install lightpanda / pip install lightpanda
+```
+
 ```python
 from lightpanda import Browser
 
@@ -50,3 +54,18 @@ Regenerate the tool methods (`lightpanda/_methods.py`) and the API docs:
 uv run --no-project python scripts/generate_methods.py
 uv run --no-project --with pdoc python scripts/build_docs.py   # writes docs/
 ```
+
+## Building a wheel
+
+With a binary available (`LIGHTPANDA_BIN`, or the sibling checkout built
+`ReleaseFast`):
+
+```bash
+uv build --wheel                                    # -> dist/lightpanda-*-py3-none-<plat>.whl
+LIGHTPANDA_PLAT=manylinux_2_35_x86_64 uv build --wheel   # CI: tag for the release runner's glibc
+```
+
+The wheel is platform-specific (it carries the binary) but works on every
+Python ≥3.10 — hence the `py3-none-<plat>` tag. Release wheels must bundle a
+`ReleaseFast` binary; a debug build works but is several times larger and
+slower.
