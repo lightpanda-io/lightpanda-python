@@ -17,12 +17,12 @@ def main():
 
     args = [str(binary)] + sys.argv[1:]
     try:
-        if sys.platform != "win32":
-            os.execv(binary, args)
-        else:
-            sys.exit(subprocess.run(args).returncode)
-    except KeyboardInterrupt:
-        sys.exit(130)
+        if sys.platform == "win32":
+            try:
+                sys.exit(subprocess.run(args).returncode)
+            except KeyboardInterrupt:
+                sys.exit(130)
+        os.execv(binary, args)
     except OSError as err:
         print(f"error executing {binary}: {err}", file=sys.stderr)
         sys.exit(1)

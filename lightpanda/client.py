@@ -82,24 +82,20 @@ class Client:
         verbose: bool = False,
         args: tuple[str, ...] | list[str] = (),
     ):
-        self._binary = find_binary(binary)
-        self._extra_args = list(args)
+        binary = find_binary(binary)
         self._timeout = timeout
         self._lock = threading.Lock()
         self._id = 0
         self._proc: subprocess.Popen | None = None
         self._port = 0
 
-        child_env = dict(os.environ)
-        if env:
-            child_env.update(env)
-
+        child_env = os.environ | (env or {})
         stderr = None if verbose else subprocess.DEVNULL
         last_error: Exception | None = None
         for _ in range(_SPAWN_ATTEMPTS):
             port = _free_port()
             proc = subprocess.Popen(
-                [str(self._binary), "mcp", "--port", str(port), *self._extra_args],
+                [str(binary), "mcp", "--port", str(port), *args],
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=stderr,
@@ -160,7 +156,7 @@ class Client:
         if params is not None:
             message["params"] = params
 
-        status, body = self._http("POST", json.dumps(message).encode(), session_id)
+        status, body = self._post(message, session_id)
         if not body:
             raise ProtocolError(f"empty response (HTTP {status}) for {method}")
         try:
@@ -172,8 +168,10 @@ class Client:
         return payload.get("result")
 
     def notify(self, method: str, session_id: str | None = None) -> None:
-        message = {"jsonrpc": "2.0", "method": method}
-        self._http("POST", json.dumps(message).encode(), session_id)
+        self._post({"jsonrpc": "2.0", "method": method}, session_id)
+
+    def _post(self, message: dict, session_id: str | None) -> tuple[int, bytes]:
+        return self._http("POST", json.dumps(message).encode(), session_id)
 
     def delete_session(self, session_id: str) -> None:
         self._http("DELETE", None, session_id)

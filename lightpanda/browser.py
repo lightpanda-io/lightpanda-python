@@ -8,10 +8,12 @@ Both the original tool name (``waitForSelector``) and its snake_case form
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import re
 import subprocess
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from .client import Client, find_binary
@@ -31,15 +33,6 @@ _SESSION_TOOLS = {"save", "session_new", "session_list", "session_close"}
 
 def _snake(name: str) -> str:
     return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
-
-
-def _parse_result_text(text: str):
-    """Tool results are text; JSON payloads (extract, links, tree, ...) are
-    returned parsed, anything else as the raw string."""
-    try:
-        return json.loads(text)
-    except ValueError:
-        return text
 
 
 class Session(SessionMethods):
@@ -78,8 +71,12 @@ class Session(SessionMethods):
         if name not in self._tools:
             raise ToolError(f"unknown tool {tool!r}")
         kwargs = {k: v for k, v in kwargs.items() if v is not None}
-        if name == "extract" and isinstance(kwargs.get("schema"), (dict, list)):
-            kwargs["schema"] = json.dumps(kwargs["schema"])
+        # The server declares JSON-carrying params (e.g. extract's schema) as
+        # strings; serialize dict/list values passed for any such param.
+        properties = self._tools[name]["schema"].get("properties", {})
+        for key, value in kwargs.items():
+            if isinstance(value, (dict, list)) and properties.get(key, {}).get("type") == "string":
+                kwargs[key] = json.dumps(value)
 
         result = self._client.request(
             "tools/call", {"name": name, "arguments": kwargs}, session_id=self._id
@@ -88,19 +85,18 @@ class Session(SessionMethods):
         text = "\n".join(part.get("text", "") for part in content if part.get("type") == "text")
         if result.get("isError"):
             raise ToolError(text or f"{name} failed")
-        return _parse_result_text(text)
+        # Tool results are text; JSON payloads (extract, links, tree, ...) are
+        # returned parsed, anything else as the raw string.
+        try:
+            return json.loads(text)
+        except ValueError:
+            return text
 
     def __getattr__(self, attr: str):
         tools = self.__dict__.get("_tools") or {}
         name = self.__dict__.get("_snake_map", {}).get(attr, attr)
         if name in tools and name not in _SESSION_TOOLS:
-            def method(**kwargs):
-                return self.call(name, **kwargs)
-
-            method.__name__ = attr
-            method.__qualname__ = f"Session.{attr}"
-            method.__doc__ = tools[name].get("description")
-            return method
+            return functools.partial(self.call, name)
         raise AttributeError(f"{type(self).__name__!r} object has no attribute {attr!r}")
 
     def __dir__(self):
@@ -121,13 +117,6 @@ class Session(SessionMethods):
 
     def __exit__(self, *exc):
         self.close()
-
-
-# pdoc hides members inherited from a private module; re-attach the generated
-# tool methods as Session's own so they document (and introspect) directly.
-for _name, _member in vars(SessionMethods).items():
-    if not _name.startswith("_") and _name != "call":
-        setattr(Session, _name, _member)
 
 
 # pdoc hides members inherited from a private module; re-attach the generated
@@ -198,13 +187,9 @@ def run_script(
     path = Path(script)
     if not path.is_file():
         raise ScriptError(f"script not found: {path}", returncode=-1)
-    child_env = dict(os.environ)
-    if env:
-        child_env.update(env)
-
     proc = subprocess.run(
         [str(find_binary(binary)), "run", str(path)],
-        env=child_env,
+        env=os.environ | (env or {}),
         capture_output=True,
         text=True,
         timeout=timeout,
@@ -220,12 +205,11 @@ def run_script(
     return proc.stdout
 
 
+@functools.cache
 def _version() -> str:
     try:
-        from importlib.metadata import version
-
         return version("lightpanda")
-    except Exception:
+    except PackageNotFoundError:
         return "0.0.0.dev0"
 
 

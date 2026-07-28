@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from lightpanda import ToolError, run_script
+from lightpanda import Browser, ToolError, run_script
 
 
 def test_goto_and_markdown(browser, fixture_url):
@@ -61,8 +61,6 @@ def test_unknown_tool_raises(browser):
 
 
 def test_extra_args_passthrough(binary, fixture_url, tmp_path):
-    from lightpanda import Browser
-
     cache_dir = tmp_path / "cache"
     with Browser(binary=binary, args=["--http-cache-dir", str(cache_dir)]) as b:
         with b.new_session() as page:
