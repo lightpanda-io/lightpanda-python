@@ -39,7 +39,9 @@ def browser(binary):
         yield b
 
 
+# Wraps the session browser rather than spawning a second process; the
+# spawn path is covered by test_lazy_start_and_tools_property.
 @pytest.fixture(scope="session")
-async def abrowser(binary):
-    async with AsyncBrowser(binary=binary) as b:
+async def abrowser(browser):
+    async with AsyncBrowser.wrap(browser) as b:
         yield b

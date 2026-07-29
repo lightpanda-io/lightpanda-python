@@ -10,7 +10,7 @@ from lightpanda import AsyncBrowser, LightpandaError, ToolError, run_script_asyn
 
 
 async def test_goto_markdown_and_alias(abrowser, fixture_url):
-    async with await abrowser.new_session() as page:
+    async with abrowser.session() as page:
         await page.goto(url=f"{fixture_url}/index.html")
         assert "Hello from the fixture" in await page.markdown()
         assert await page.get_url() == await page.getUrl()
@@ -18,7 +18,7 @@ async def test_goto_markdown_and_alias(abrowser, fixture_url):
 
 async def test_concurrent_sessions_are_isolated(abrowser, fixture_url):
     async def visit(path):
-        async with await abrowser.new_session() as page:
+        async with abrowser.session() as page:
             await page.goto(url=f"{fixture_url}/{path}")
             return await page.get_url()
 
@@ -27,7 +27,7 @@ async def test_concurrent_sessions_are_isolated(abrowser, fixture_url):
 
 
 async def test_tool_error_raises(abrowser, fixture_url):
-    async with await abrowser.new_session() as page:
+    async with abrowser.session() as page:
         await page.goto(url=f"{fixture_url}/index.html")
         with pytest.raises(ToolError):
             await page.extract(schema={"nope": "#does-not-exist"})

@@ -11,6 +11,7 @@ without changing it.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import functools
 import os
 from concurrent.futures import ThreadPoolExecutor
@@ -54,7 +55,8 @@ class AsyncSession(AsyncSessionMethods):
         return sorted(set(super().__dir__()) | self._session._tool_attrs())
 
     async def close(self) -> None:
-        await _run(self._executor, self._session.close)
+        if not self._session._closed:
+            await _run(self._executor, self._session.close)
 
     async def __aenter__(self):
         return self
@@ -89,8 +91,19 @@ class AsyncBrowser:
         created lazily)."""
         self._kwargs = dict(binary=binary, env=env, timeout=timeout, verbose=verbose, args=args)
         self._browser: Browser | None = None
+        self._owns = True
         self._start_lock = asyncio.Lock()
         self._executor = ThreadPoolExecutor(max_workers=max_concurrency, thread_name_prefix="lightpanda")
+
+    @classmethod
+    def wrap(cls, browser: Browser, max_concurrency: int = 32) -> AsyncBrowser:
+        """Adopt an already-running :class:`Browser` — the migration path for
+        driving existing sync setup from asyncio. :meth:`close` shuts down
+        the facade but leaves the wrapped browser running."""
+        self = cls(max_concurrency=max_concurrency)
+        self._browser = browser
+        self._owns = False
+        return self
 
     async def start(self) -> AsyncBrowser:
         """Spawn the browser process and fetch its tool list. Idempotent."""
@@ -111,10 +124,22 @@ class AsyncBrowser:
         await self.start()
         return AsyncSession(await _run(self._executor, self._browser.new_session), self._executor)
 
+    @contextlib.asynccontextmanager
+    async def session(self):
+        """``async with browser.session() as page:`` — a session scoped to
+        the block and closed on exit. Use :meth:`new_session` for the
+        unscoped form."""
+        page = await self.new_session()
+        try:
+            yield page
+        finally:
+            await page.close()
+
     async def close(self) -> None:
         if self._browser is not None:
             browser, self._browser = self._browser, None
-            await _run(self._executor, browser.close)
+            if self._owns:
+                await _run(self._executor, browser.close)
         self._executor.shutdown(wait=False)
 
     async def __aenter__(self):
