@@ -8,8 +8,20 @@ with Browser() as b:
     page.goto(url="https://example.com")
     data = page.extract(schema={"title": "h1"})
 ```
+
+The same API is available for asyncio:
+
+```python
+from lightpanda import AsyncBrowser
+
+async with AsyncBrowser() as b:
+    page = await b.new_session()
+    await page.goto(url="https://example.com")
+    data = await page.extract(schema={"title": "h1"})
+```
 """
 
+from .async_browser import AsyncBrowser, AsyncSession, run_script_async
 from .browser import Browser, Session, run_script
 from .errors import LightpandaError, ProtocolError, ScriptError, ToolError
 
@@ -17,6 +29,9 @@ __all__ = [
     "Browser",
     "Session",
     "run_script",
+    "AsyncBrowser",
+    "AsyncSession",
+    "run_script_async",
     "LightpandaError",
     "ProtocolError",
     "ScriptError",

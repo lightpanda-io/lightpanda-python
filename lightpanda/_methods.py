@@ -2,6 +2,7 @@
 
 One method per lightpanda browser tool, signatures derived from the tool
 JSON schemas. camelCase aliases mirror the underlying tool names.
+``AsyncSessionMethods`` is the same surface with ``async def`` signatures.
 """
 
 from __future__ import annotations
@@ -102,7 +103,7 @@ Examples (schema → result):
         """Scroll the page or a specific element. Returns the scroll position and current page URL and title."""
         return self.call("scroll", backendNodeId=backendNodeId, x=x, y=y)
     def search(self, *, query: str, timeout: int | None = None) -> Any:
-        """Run a web search and return results as markdown. When TAVILY_API_KEY is set, queries the Tavily Search API and returns a numbered list of {title, url, snippet}. Otherwise (or on Tavily failure) falls back to scraping the DuckDuckGo HTML endpoint — degraded results, may rate-limit on bursty traffic. Prefer this over goto-ing google.com/search directly (Google blocks the browser on User-Agent/TLS). Browser state after this call is unspecified — to interact with a result, use `goto` with its URL; do not assume the browser DOM matches the results page."""
+        """Run a web search and return results as markdown. When BRAVE_API_KEY or TAVILY_API_KEY is set, queries that search API (Brave preferred) and returns a numbered list of {title, url, snippet}. Otherwise (or on API failure) falls back to scraping the DuckDuckGo HTML endpoint — degraded results, may rate-limit on bursty traffic. Prefer this over goto-ing google.com/search directly (Google blocks the browser on User-Agent/TLS). Browser state after this call is unspecified — to interact with a result, use `goto` with its URL; do not assume the browser DOM matches the results page."""
         return self.call("search", query=query, timeout=timeout)
     def select_option(self, *, value: str, selector: str | None = None, backendNodeId: int | None = None) -> Any:
         """Select an option in a <select> dropdown element by its value. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Dispatches input and change events."""
@@ -135,5 +136,134 @@ Examples (schema → result):
     def wait_for_state(self, *, state: str, timeout: int | None = None) -> Any:
         """Wait for the CURRENT page to reach a load state (no navigation). After a `goto`, the page is returned at the fast `load` snapshot, so content rendered by post-load JS (XHR-loaded lists, feeds, search results) may still be missing. When a read looks incomplete — empty lists, spinners, skeletons — call this with 'networkidle' and re-read. Prefer 'networkidle'; 'done' can be slow on sites with constant background activity (ads, polling)."""
         return self.call("waitForState", state=state, timeout=timeout)
+
+    waitForState = wait_for_state
+
+class AsyncSessionMethods:
+    async def call(self, tool: str, **kwargs: Any) -> Any:
+        raise NotImplementedError
+
+    async def click(self, *, selector: str | None = None, backendNodeId: int | None = None) -> Any:
+        """Click on an interactive element. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Returns the current page URL and title after the click."""
+        return await self.call("click", selector=selector, backendNodeId=backendNodeId)
+    async def console_logs(self) -> Any:
+        """Get buffered console.log/warn/error messages from the current page. Returns all messages since last call and clears the buffer."""
+        return await self.call("consoleLogs")
+
+    consoleLogs = console_logs
+    async def detect_forms(self, *, url: str | None = None, timeout: int | None = None) -> Any:
+        """Detect all forms on the page and return their structure including fields, types, and required status. If a url is provided, it navigates to that url first."""
+        return await self.call("detectForms", url=url, timeout=timeout)
+
+    detectForms = detect_forms
+    async def evaluate(self, *, script: str, url: str | None = None, timeout: int | None = None, save: str | None = None) -> Any:
+        """Evaluate JavaScript in the current page context — an escape hatch for page-side logic the dedicated tools can't express; prefer `extract` for data and click/fill/etc. for actions. It runs in the page, so it cannot see the agent script's variables or builtins — interpolate any value into the `script` string. A bare trailing expression yields its value; top-level `await` and `return` are supported (the body then runs as an async function, so use `return` to produce a value). Objects and arrays return as JSON, so no `JSON.stringify` is needed. If a url is provided, it navigates there first. The `globalThis.lp` object exposes a Session-scoped bridge store: values written via `lp.foo = ...` auto-sync at end of evaluate, surviving navigation; values previously set via `/extract save=` or `/evaluate save=` appear as `lp.<name>`."""
+        return await self.call("evaluate", script=script, url=url, timeout=timeout, save=save)
+    async def extract(self, *, schema: str | dict | list, save: str | None = None) -> Any:
+        """Extract structured data from the current page (navigate first). `schema` is a JSON object (passed as a string) mapping output field names to CSS-selector specs. It is NOT a JSON Schema — no "type"/"properties" wrappers; the keys ARE your output fields. Value shapes:
+  "<sel>"                                → first match's text (trimmed; null if no match)
+  ["<sel>"]                              → every match's text (string[])
+  {"selector":"<sel>","attr":"<name>"}   → first match's attribute value (href/src resolved to absolute URLs)
+  [{"selector":"<sel>","attr":"<name>"}] → every match's attribute (string[])
+  [{"selector":"<sel>","fields":{…}}]    → one object per match; field selectors resolve relative to that match and accept any shape above ("" = the match's own text; nest arrays for per-item sub-lists)
+Add "limit": N inside any array's object spec to cap matches.
+Every extracted value is a string or null — parse numbers downstream. An empty array is a valid result, but if ALL top-level keys miss, the call errors: inspect the page (tree/markdown) and retry with corrected selectors.
+Finish data tasks with extract — it is the only read recorded as a replayable `extract(...)` script call; answers lifted from `markdown` text in chat are not.
+
+Examples (schema → result):
+  {"karma": "#karma"} → {"karma":"42"}
+  {"items": [".story .title"]} → {"items":["Title 1","Title 2"]}
+  {"top3": [{"selector":".story .title","limit":3}]} → {"top3":["A","B","C"]}
+  {"links": [{"selector":"a.title","attr":"href"}]} → {"links":["https://site/a","https://site/b"]}
+  {"stories": [{"selector":".athing","fields":{"title":".titleline","rank":".rank"}}]} → {"stories":[{"title":"Foo","rank":"1"}]}"""
+        return await self.call("extract", schema=schema, save=save)
+    async def fill(self, *, value: str, selector: str | None = None, backendNodeId: int | None = None) -> Any:
+        """Fill text into an input element. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId."""
+        return await self.call("fill", value=value, selector=selector, backendNodeId=backendNodeId)
+    async def find_element(self, *, role: str | None = None, name: str | None = None) -> Any:
+        """Find interactive elements by role and/or accessible name. Returns matching elements with their backend node IDs. Useful for locating specific elements without parsing the full semantic tree."""
+        return await self.call("findElement", role=role, name=name)
+
+    findElement = find_element
+    async def get_cookies(self, *, url: str | None = None, all: bool | None = None) -> Any:
+        """Cookies stored in the browser. Defaults to cookies whose domain matches the current page's host. Pass `url=<URL>` to filter for another host, or `all=true` to dump every cookie regardless of host. Useful for debugging authentication and session state."""
+        return await self.call("getCookies", url=url, all=all)
+
+    getCookies = get_cookies
+    async def get_env(self, *, name: str | None = None) -> Any:
+        """With `name`: read an LP_* env var (other namespaces report as not set) — for non-secret config only (base URLs, flags). Without `name`: list LP_* names that are set (no values) — safe credential discovery. For secrets, pass `$LP_*` placeholders in tool args; never request a credential by name (the value would land in your context)."""
+        return await self.call("getEnv", name=name)
+
+    getEnv = get_env
+    async def get_url(self) -> Any:
+        """Current page URL. The browser may already have a page loaded (command, replayed script) not visible in this conversation — call this before assuming nothing is loaded when the user references the current page/site. Also useful to verify a navigation or detect a redirect."""
+        return await self.call("getUrl")
+
+    getUrl = get_url
+    async def goto(self, *, url: str, timeout: int | None = None) -> Any:
+        """Navigate to a specified URL and load the page in memory so it can be reused later for info extraction."""
+        return await self.call("goto", url=url, timeout=timeout)
+    async def hover(self, *, selector: str | None = None, backendNodeId: int | None = None) -> Any:
+        """Hover over an element, triggering mouseover and mouseenter events. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Useful for menus, tooltips, and hover states."""
+        return await self.call("hover", selector=selector, backendNodeId=backendNodeId)
+    async def html(self, *, selector: str | None = None, backendNodeId: int | None = None, url: str | None = None, timeout: int | None = None) -> Any:
+        """Raw HTML for the document or, with `selector`/`backendNodeId`, a single node's outerHTML. Verbose; use only when you need attributes that markdown discards."""
+        return await self.call("html", selector=selector, backendNodeId=backendNodeId, url=url, timeout=timeout)
+    async def interactive_elements(self, *, url: str | None = None, timeout: int | None = None) -> Any:
+        """Extract interactive elements from the opened page. If a url is provided, it navigates to that url first."""
+        return await self.call("interactiveElements", url=url, timeout=timeout)
+
+    interactiveElements = interactive_elements
+    async def links(self, *, url: str | None = None, timeout: int | None = None) -> Any:
+        """Extract all links in the opened page as JSON objects with `text` (visible anchor text), `href` (resolved URL), and `backendNodeId` (pass to click/nodeDetails). If a url is provided, it navigates to that url first."""
+        return await self.call("links", url=url, timeout=timeout)
+    async def markdown(self, *, selector: str | None = None, backendNodeId: int | None = None, maxBytes: int | None = None, url: str | None = None, timeout: int | None = None) -> Any:
+        """Render the page (or a subtree) as markdown. Scope with `selector` or `backendNodeId` to read just the relevant region — full-page markdown is the last resort. Use `maxBytes` to cap long pages."""
+        return await self.call("markdown", selector=selector, backendNodeId=backendNodeId, maxBytes=maxBytes, url=url, timeout=timeout)
+    async def node_details(self, *, backendNodeId: int) -> Any:
+        """Details for a node by backendNodeId: a ready-to-use CSS `selector` that resolves to the node (the first match, as click/fill resolve it), plus tag, role, name, interactivity, disabled, value, input type, placeholder, href, id, class, checked, select options. The canonical way to turn a tree backendNodeId into a CSS selector."""
+        return await self.call("nodeDetails", backendNodeId=backendNodeId)
+
+    nodeDetails = node_details
+    async def press(self, *, key: str, selector: str | None = None, backendNodeId: int | None = None) -> Any:
+        """Press a keyboard key, dispatching keydown and keyup events. Use key names like 'Enter', 'Tab', 'Escape', 'ArrowDown', 'Backspace', or single characters like 'a', '1'. Common shorthand is normalized: 'enter'/'return' → 'Enter', 'esc' → 'Escape', 'up'/'down'/'left'/'right' → 'Arrow*', 'space' → ' '. Pressing 'Enter' on a form input or submit button triggers implicit form submission."""
+        return await self.call("press", key=key, selector=selector, backendNodeId=backendNodeId)
+    async def scroll(self, *, backendNodeId: int | None = None, x: int | None = None, y: int | None = None) -> Any:
+        """Scroll the page or a specific element. Returns the scroll position and current page URL and title."""
+        return await self.call("scroll", backendNodeId=backendNodeId, x=x, y=y)
+    async def search(self, *, query: str, timeout: int | None = None) -> Any:
+        """Run a web search and return results as markdown. When BRAVE_API_KEY or TAVILY_API_KEY is set, queries that search API (Brave preferred) and returns a numbered list of {title, url, snippet}. Otherwise (or on API failure) falls back to scraping the DuckDuckGo HTML endpoint — degraded results, may rate-limit on bursty traffic. Prefer this over goto-ing google.com/search directly (Google blocks the browser on User-Agent/TLS). Browser state after this call is unspecified — to interact with a result, use `goto` with its URL; do not assume the browser DOM matches the results page."""
+        return await self.call("search", query=query, timeout=timeout)
+    async def select_option(self, *, value: str, selector: str | None = None, backendNodeId: int | None = None) -> Any:
+        """Select an option in a <select> dropdown element by its value. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Dispatches input and change events."""
+        return await self.call("selectOption", value=value, selector=selector, backendNodeId=backendNodeId)
+
+    selectOption = select_option
+    async def set_checked(self, *, checked: bool, selector: str | None = None, backendNodeId: int | None = None) -> Any:
+        """Check or uncheck a checkbox or radio button. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Dispatches input, change, and click events."""
+        return await self.call("setChecked", checked=checked, selector=selector, backendNodeId=backendNodeId)
+
+    setChecked = set_checked
+    async def structured_data(self, *, url: str | None = None, timeout: int | None = None) -> Any:
+        """Extract structured data (like JSON-LD, OpenGraph, etc) from the opened page. If a url is provided, it navigates to that url first."""
+        return await self.call("structuredData", url=url, timeout=timeout)
+
+    structuredData = structured_data
+    async def tree(self, *, url: str | None = None, timeout: int | None = None, backendNodeId: int | None = None, maxDepth: int | None = None) -> Any:
+        """Simplified semantic DOM tree (role, name, value, backendNodeId per node). Pass `backendNodeId` to scope, `maxDepth` to limit depth."""
+        return await self.call("tree", url=url, timeout=timeout, backendNodeId=backendNodeId, maxDepth=maxDepth)
+    async def wait_for_script(self, *, script: str, timeout: int | None = None) -> Any:
+        """Wait until a JS expression returns truthy. Re-evaluates on each tick of the event loop. Use for synchronization beyond what CSS selectors can express — e.g. `window.dataLoaded === true`, `document.readyState === 'complete'`, `document.querySelectorAll('.row').length >= 5`."""
+        return await self.call("waitForScript", script=script, timeout=timeout)
+
+    waitForScript = wait_for_script
+    async def wait_for_selector(self, *, selector: str, timeout: int | None = None) -> Any:
+        """Wait for an element matching a CSS selector to appear in the page. Returns the backend node ID of the matched element."""
+        return await self.call("waitForSelector", selector=selector, timeout=timeout)
+
+    waitForSelector = wait_for_selector
+    async def wait_for_state(self, *, state: str, timeout: int | None = None) -> Any:
+        """Wait for the CURRENT page to reach a load state (no navigation). After a `goto`, the page is returned at the fast `load` snapshot, so content rendered by post-load JS (XHR-loaded lists, feeds, search results) may still be missing. When a read looks incomplete — empty lists, spinners, skeletons — call this with 'networkidle' and re-read. Prefer 'networkidle'; 'done' can be slow on sites with constant background activity (ads, polling)."""
+        return await self.call("waitForState", state=state, timeout=timeout)
 
     waitForState = wait_for_state

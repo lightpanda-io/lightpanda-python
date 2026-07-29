@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from lightpanda import Browser
+from lightpanda import AsyncBrowser, Browser
 
 BROWSER_CHECKOUT = Path(__file__).parent.parent.parent / "browser"
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -36,4 +36,10 @@ def fixture_url():
 @pytest.fixture(scope="session")
 def browser(binary):
     with Browser(binary=binary) as b:
+        yield b
+
+
+@pytest.fixture(scope="session")
+async def abrowser(binary):
+    async with AsyncBrowser(binary=binary) as b:
         yield b

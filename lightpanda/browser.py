@@ -9,6 +9,8 @@ Both the original tool name (``waitForSelector``) and its snake_case form
 from __future__ import annotations
 
 import functools
+import importlib
+import itertools
 import json
 import os
 import re
@@ -19,20 +21,33 @@ from pathlib import Path
 from .client import Client, find_binary
 from .errors import ProtocolError, ScriptError, ToolError
 
-try:
-    from ._methods import SessionMethods
-except ImportError:
-    # Bootstrap: scripts/generate_methods.py itself imports this module
-    # before _methods.py exists; tool calls then rely on __getattr__.
-    class SessionMethods:
-        pass
-
-
 _SESSION_TOOLS = {"save", "session_new", "session_list", "session_close"}
 
 
 def _snake(name: str) -> str:
     return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
+
+
+def _generated(name: str) -> type:
+    """The named class from ._methods, or an empty stub while
+    scripts/generate_methods.py bootstraps (it imports this package before
+    _methods.py exists; tool calls then rely on __getattr__)."""
+    try:
+        return getattr(importlib.import_module("._methods", __package__), name)
+    except (ImportError, AttributeError):
+        return type(name, (), {})
+
+
+def _attach_generated(cls: type, methods: type) -> None:
+    """pdoc hides members inherited from a private module; re-attach the
+    generated tool methods as the class's own so they document (and
+    introspect) directly."""
+    for name, member in vars(methods).items():
+        if not name.startswith("_") and name != "call":
+            setattr(cls, name, member)
+
+
+SessionMethods = _generated("SessionMethods")
 
 
 class Session(SessionMethods):
@@ -92,20 +107,25 @@ class Session(SessionMethods):
         except ValueError:
             return text
 
+    def _resolve(self, attr: str) -> str | None:
+        """The tool name behind a public attribute (snake or camel), if any."""
+        name = self._snake_map.get(attr, attr)
+        return name if name in self._tools and name not in _SESSION_TOOLS else None
+
+    def _tool_attrs(self) -> set[str]:
+        names = set()
+        for snake, name in self._snake_map.items():
+            if name not in _SESSION_TOOLS:
+                names.update((snake, name))
+        return names
+
     def __getattr__(self, attr: str):
-        tools = self.__dict__.get("_tools") or {}
-        name = self.__dict__.get("_snake_map", {}).get(attr, attr)
-        if name in tools and name not in _SESSION_TOOLS:
+        if self.__dict__.get("_tools") and (name := self._resolve(attr)):
             return functools.partial(self.call, name)
         raise AttributeError(f"{type(self).__name__!r} object has no attribute {attr!r}")
 
     def __dir__(self):
-        names = set(super().__dir__())
-        for name in self._tools:
-            if name not in _SESSION_TOOLS:
-                names.add(name)
-                names.add(_snake(name))
-        return sorted(names)
+        return sorted(set(super().__dir__()) | self._tool_attrs())
 
     def close(self) -> None:
         if not self._closed:
@@ -119,11 +139,7 @@ class Session(SessionMethods):
         self.close()
 
 
-# pdoc hides members inherited from a private module; re-attach the generated
-# tool methods as Session's own so they document (and introspect) directly.
-for _name, _member in vars(SessionMethods).items():
-    if not _name.startswith("_") and _name != "call":
-        setattr(Session, _name, _member)
+_attach_generated(Session, SessionMethods)
 
 
 class Browser:
@@ -144,7 +160,7 @@ class Browser:
         """``args`` are extra CLI flags for the spawned browser process
         (e.g. ``["--http-cache-dir", path]`` or cookie flags)."""
         self._client = Client(binary=binary, env=env, timeout=timeout, verbose=verbose, args=args)
-        self._seq = 0
+        self._seq = itertools.count(1)
         listed = self._client.request("tools/list")
         self._tools = {
             tool["name"]: {
@@ -160,8 +176,9 @@ class Browser:
         return self._tools
 
     def new_session(self) -> Session:
-        self._seq += 1
-        return Session(self._client, f"py{self._seq}", self._tools)
+        # itertools.count is atomic, so concurrent callers (the async facade's
+        # worker threads) can't mint duplicate session ids.
+        return Session(self._client, f"py{next(self._seq)}", self._tools)
 
     def close(self) -> None:
         self._client.close()

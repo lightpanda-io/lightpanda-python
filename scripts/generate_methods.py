@@ -28,15 +28,18 @@ HEADER = '''\
 
 One method per lightpanda browser tool, signatures derived from the tool
 JSON schemas. camelCase aliases mirror the underlying tool names.
+``AsyncSessionMethods`` is the same surface with ``async def`` signatures.
 """
 
 from __future__ import annotations
 
 from typing import Any
+'''
 
+CLASS_HEADER = '''\
 
-class SessionMethods:
-    def call(self, tool: str, **kwargs: Any) -> Any:
+class {cls}:
+    {prefix}def call(self, tool: str, **kwargs: Any) -> Any:
         raise NotImplementedError
 '''
 
@@ -46,7 +49,7 @@ def docstring(text: str) -> str:
     return f'        """{body}"""'
 
 
-def method_source(name: str, spec: dict) -> str:
+def method_source(name: str, spec: dict, is_async: bool = False) -> str:
     schema = spec["schema"]
     properties = schema.get("properties", {})
     required = set(schema.get("required", []))
@@ -70,9 +73,11 @@ def method_source(name: str, spec: dict) -> str:
 
     snake = _snake(name)
     call_args = ", ".join([f'"{name}"'] + forwards)
-    lines = [f"    def {snake}({', '.join(params)}) -> Any:"]
+    prefix = "async def" if is_async else "def"
+    await_ = "await " if is_async else ""
+    lines = [f"    {prefix} {snake}({', '.join(params)}) -> Any:"]
     lines.append(docstring(spec["description"]))
-    lines.append(f"        return self.call({call_args})")
+    lines.append(f"        return {await_}self.call({call_args})")
     if snake != name:
         lines.append("")
         lines.append(f"    {name} = {snake}")
@@ -85,8 +90,10 @@ def main() -> None:
         tools = {k: v for k, v in browser.tools.items() if k not in _SESSION_TOOLS}
 
     blocks = [HEADER]
-    for name in sorted(tools):
-        blocks.append(method_source(name, tools[name]))
+    for is_async in (False, True):
+        cls = "AsyncSessionMethods" if is_async else "SessionMethods"
+        blocks.append(CLASS_HEADER.format(cls=cls, prefix="async " if is_async else ""))
+        blocks += [method_source(name, tools[name], is_async) for name in sorted(tools)]
 
     source = "\n".join(blocks) + "\n"
     compile(source, str(out), "exec")

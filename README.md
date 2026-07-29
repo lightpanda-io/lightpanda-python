@@ -17,6 +17,18 @@ with Browser() as b:
     data = page.extract(schema={"title": "h1"})
 ```
 
+The same API is available for asyncio — `AsyncBrowser` spawns the browser on
+first use and runs sessions concurrently:
+
+```python
+from lightpanda import AsyncBrowser
+
+async with AsyncBrowser() as b:
+    page = await b.new_session()
+    await page.goto(url="https://example.com")
+    data = await page.extract(schema={"title": "h1"})
+```
+
 Every browser tool is a `Session` method (both `waitForSelector` and
 `wait_for_selector` work), typed and documented in your IDE. Replay a saved
 lightpanda agent script without any LLM:
@@ -26,6 +38,8 @@ from lightpanda import run_script
 
 run_script("hn.lp.js", env={"LP_HN_USERNAME": "me"})
 ```
+
+(`run_script_async` is the awaitable variant.)
 
 The package also puts the full `lightpanda` CLI on PATH (agent REPL, fetch,
 serve).
