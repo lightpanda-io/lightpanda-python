@@ -153,10 +153,11 @@ jobs:
       - name: Run the test suite against the installed wheel
         run: |
           # Resolve the *bundled* binary and pin the tests to it; run from
-          # outside the checkout so the source tree can't shadow the install.
+          # outside the checkout so the source tree can't shadow the install
+          # (-I likewise keeps the cwd off sys.path for this resolution).
           # pyproject.toml comes along for its [tool.pytest.ini_options]
           # (asyncio_mode) — without it the async tests are silently skipped.
-          BIN=$(./wheel-env/bin/python -c "from lightpanda.client import find_binary; print(find_binary())")
+          BIN=$(./wheel-env/bin/python -I -c "from lightpanda.client import find_binary; print(find_binary())")
           echo "bundled binary: $BIN"
           mkdir -p /tmp/wheeltest && cp -r tests pyproject.toml /tmp/wheeltest/
           cd /tmp/wheeltest
