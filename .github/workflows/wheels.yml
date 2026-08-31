@@ -8,8 +8,22 @@ name: wheels
 # Modeled on zignal's python.yml (matrix -> build -> test-the-wheel ->
 # publish), minus everything a C extension needs: no per-Python builds,
 # no cross-compilation, no auditwheel/delocate.
+#
+# Triggers:
+#   - pull_request / push to main: build + test against the browser
+#     `nightly` release, no publish.
+#   - release published: build + test the browser release with the SAME tag
+#     and publish to PyPI. A release tag on this repo must equal the browser
+#     release tag it ships (e.g. v0.1.0); the wheel version is derived from
+#     it.
+#   - workflow_dispatch: pick any browser tag and publish target manually.
 
 on:
+  pull_request:
+  push:
+    branches: [main]
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       release:
@@ -21,11 +35,44 @@ on:
         options: [none, testpypi, pypi]
         default: none
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   BROWSER_REPO: lightpanda-io/browser
 
 jobs:
+  # Map the triggering event to the browser tag to bundle and the publish
+  # target, so the downstream jobs don't each re-derive it.
+  params:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      release_tag: ${{ steps.resolve.outputs.release_tag }}
+      publish: ${{ steps.resolve.outputs.publish }}
+    steps:
+      - name: Resolve release tag and publish target
+        id: resolve
+        run: |
+          case "${{ github.event_name }}" in
+            release)
+              echo "release_tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+              echo "publish=pypi" >> "$GITHUB_OUTPUT"
+              ;;
+            workflow_dispatch)
+              echo "release_tag=${{ inputs.release }}" >> "$GITHUB_OUTPUT"
+              echo "publish=${{ inputs.publish }}" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "release_tag=nightly" >> "$GITHUB_OUTPUT"
+              echo "publish=none" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+          cat "$GITHUB_OUTPUT"
+
   build:
+    needs: params
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -48,16 +95,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download "${{ inputs.release }}" -R "$BROWSER_REPO" \
+          gh release download "${{ needs.params.outputs.release_tag }}" -R "$BROWSER_REPO" \
             -p "${{ matrix.asset }}" -O lightpanda-bin
           chmod +x lightpanda-bin
           ls -la lightpanda-bin
 
       - name: Set wheel version from tag
-        if: inputs.release != 'nightly'
+        if: needs.params.outputs.release_tag != 'nightly'
         run: |
           # Wheel version == browser release tag (PEP 440 expects no leading v).
-          tag="${{ inputs.release }}"
+          tag="${{ needs.params.outputs.release_tag }}"
           sed -i "s/^version = .*/version = \"${tag#v}\"/" pyproject.toml
           grep '^version' pyproject.toml
 
@@ -119,11 +166,11 @@ jobs:
         run: ./wheel-env/bin/lightpanda version
 
   publish:
-    needs: test
-    if: inputs.publish != 'none'
+    needs: [params, test]
+    if: needs.params.outputs.publish != 'none'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment: ${{ inputs.publish }}
+    environment: ${{ needs.params.outputs.publish }}
     permissions:
       id-token: write  # PyPI trusted publishing
     steps:
@@ -137,7 +184,7 @@ jobs:
 
       - name: Publish
         run: |
-          if [ "${{ inputs.publish }}" = "testpypi" ]; then
+          if [ "${{ needs.params.outputs.publish }}" = "testpypi" ]; then
             uv publish --publish-url https://test.pypi.org/legacy/ dist/*.whl
           else
             uv publish dist/*.whl

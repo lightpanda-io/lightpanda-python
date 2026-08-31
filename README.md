@@ -83,3 +83,14 @@ The wheel is platform-specific (it carries the binary) but works on every
 Python ≥3.10 — hence the `py3-none-<plat>` tag. Release wheels must bundle a
 `ReleaseFast` binary; a debug build works but is several times larger and
 slower.
+
+## Releasing
+
+CI (`.github/workflows/wheels.yml`) builds and tests wheels for all four
+platforms on every pull request and push to `main`, bundling the browser's
+`nightly` release. To publish: create a GitHub release on this repo whose tag
+matches the browser release to bundle (e.g. `v0.1.0`) — CI builds wheels from
+that browser release, derives the wheel version from the tag, tests on all
+platforms, and publishes to PyPI via trusted publishing. The manual
+`workflow_dispatch` path (any browser tag, publish to TestPyPI or PyPI)
+remains available for dry runs.
