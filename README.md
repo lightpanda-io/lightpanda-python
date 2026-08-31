@@ -88,9 +88,14 @@ slower.
 
 CI (`.github/workflows/wheels.yml`) builds and tests wheels for all four
 platforms on every pull request and push to `main`, bundling the browser's
-`nightly` release. To publish: create a GitHub release on this repo whose tag
-matches the browser release to bundle (e.g. `v0.1.0`) — CI builds wheels from
-that browser release, derives the wheel version from the tag, tests on all
-platforms, and publishes to PyPI via trusted publishing. The manual
-`workflow_dispatch` path (any browser tag, publish to TestPyPI or PyPI)
-remains available for dry runs.
+`nightly` release.
+
+Publishing is automatic: a daily job (`.github/workflows/track-browser.yml`)
+watches [lightpanda-io/browser releases](https://github.com/lightpanda-io/browser/releases)
+and, for a new tag, creates the matching release here and starts a wheel run
+that builds from that browser release, derives the wheel version from the tag,
+tests on all platforms, and publishes to PyPI via trusted publishing — after a
+maintainer approves the `pypi` environment deployment on the run page. A
+release can also be triggered by hand: create a GitHub release here whose tag
+matches a browser release tag, or use the `workflow_dispatch` path (any
+browser tag, publish to TestPyPI or PyPI) for dry runs.

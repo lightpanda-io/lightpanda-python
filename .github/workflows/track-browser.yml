@@ -1,0 +1,45 @@
+name: track-browser
+
+# Daily: when the browser repo cuts a new release, start a wheel build that
+# publishes it to PyPI. The publish job still stops at the pypi environment's
+# required-reviewer gate, so nothing reaches PyPI without a human approval.
+#
+# A release on this repo (same tag as the browser release) is created first —
+# it is the dedupe marker and the changelog entry. Releases created with the
+# workflow's own GITHUB_TOKEN do not trigger the wheels workflow's `release:`
+# event (recursion prevention), so the build is started explicitly via
+# workflow_dispatch, one of the two event types exempt from that rule.
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write  # create the release on this repo
+  actions: write   # dispatch the wheels workflow
+
+env:
+  BROWSER_REPO: lightpanda-io/browser
+
+jobs:
+  track:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Release and publish the latest browser version, if new
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(gh release view --repo "$BROWSER_REPO" --json tagName --jq .tagName)
+          echo "latest browser release: $tag"
+          if gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "release $tag already exists here; nothing to do"
+            exit 0
+          fi
+          gh release create "$tag" --repo "${{ github.repository }}" \
+            --title "$tag" \
+            --notes "Bundles [lightpanda-io/browser $tag](https://github.com/${BROWSER_REPO}/releases/tag/$tag). Install with \`pip install lightpanda\`."
+          gh workflow run wheels.yml --repo "${{ github.repository }}" \
+            -f release="$tag" -f publish=pypi
+          echo "started wheels run for $tag; the publish waits for pypi environment approval"
