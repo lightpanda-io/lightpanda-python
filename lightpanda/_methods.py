@@ -71,23 +71,23 @@ Examples (schema → result):
         return self.call("getUrl")
 
     getUrl = get_url
-    def goto(self, *, url: str, timeout: int | None = None) -> Any:
+    def goto(self, *, url: str, timeout: int | None = None, waitUntil: str | None = None) -> Any:
         """Navigate to a specified URL and load the page in memory so it can be reused later for info extraction."""
-        return self.call("goto", url=url, timeout=timeout)
+        return self.call("goto", url=url, timeout=timeout, waitUntil=waitUntil)
     def hover(self, *, selector: str | None = None, backendNodeId: int | None = None) -> Any:
         """Hover over an element, triggering mouseover and mouseenter events. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Useful for menus, tooltips, and hover states."""
         return self.call("hover", selector=selector, backendNodeId=backendNodeId)
-    def html(self, *, selector: str | None = None, backendNodeId: int | None = None, url: str | None = None, timeout: int | None = None) -> Any:
+    def html(self, *, selector: str | None = None, backendNodeId: int | None = None, maxBytes: int | None = None, strip: dict | None = None, url: str | None = None, timeout: int | None = None) -> Any:
         """Raw HTML for the document or, with `selector`/`backendNodeId`, a single node's outerHTML. Verbose; use only when you need attributes that markdown discards."""
-        return self.call("html", selector=selector, backendNodeId=backendNodeId, url=url, timeout=timeout)
+        return self.call("html", selector=selector, backendNodeId=backendNodeId, maxBytes=maxBytes, strip=strip, url=url, timeout=timeout)
     def interactive_elements(self, *, url: str | None = None, timeout: int | None = None) -> Any:
         """Extract interactive elements from the opened page. If a url is provided, it navigates to that url first."""
         return self.call("interactiveElements", url=url, timeout=timeout)
 
     interactiveElements = interactive_elements
-    def links(self, *, url: str | None = None, timeout: int | None = None) -> Any:
-        """Extract all links in the opened page as JSON objects with `text` (visible anchor text), `href` (resolved URL), and `backendNodeId` (pass to click/nodeDetails). If a url is provided, it navigates to that url first."""
-        return self.call("links", url=url, timeout=timeout)
+    def links(self, *, limit: int | None = None, url: str | None = None, timeout: int | None = None) -> Any:
+        """Extract the visible links in the opened page as JSON objects with `text` (anchor text, falling back to aria-label/title/image alt), `href` (resolved URL), and `backendNodeId` (pass to click/nodeDetails). One entry per href; hidden links are omitted. If a url is provided, it navigates to that url first."""
+        return self.call("links", limit=limit, url=url, timeout=timeout)
     def markdown(self, *, selector: str | None = None, backendNodeId: int | None = None, maxBytes: int | None = None, url: str | None = None, timeout: int | None = None) -> Any:
         """Render the page (or a subtree) as markdown. Scope with `selector` or `backendNodeId` to read just the relevant region — full-page markdown is the last resort. Use `maxBytes` to cap long pages."""
         return self.call("markdown", selector=selector, backendNodeId=backendNodeId, maxBytes=maxBytes, url=url, timeout=timeout)
@@ -99,11 +99,14 @@ Examples (schema → result):
     def press(self, *, key: str, selector: str | None = None, backendNodeId: int | None = None) -> Any:
         """Press a keyboard key, dispatching keydown and keyup events. Use key names like 'Enter', 'Tab', 'Escape', 'ArrowDown', 'Backspace', or single characters like 'a', '1'. Common shorthand is normalized: 'enter'/'return' → 'Enter', 'esc' → 'Escape', 'up'/'down'/'left'/'right' → 'Arrow*', 'space' → ' '. Pressing 'Enter' on a form input or submit button triggers implicit form submission."""
         return self.call("press", key=key, selector=selector, backendNodeId=backendNodeId)
+    def screenshot(self, *, path: str | None = None, selector: str | None = None, backendNodeId: int | None = None, fullPage: bool | None = None, url: str | None = None, timeout: int | None = None) -> Any:
+        """Render the page, or one node, as a PNG: the text layout Lightpanda computes, not a pixel-accurate browser rendering (no images, fonts or CSS colours). With `path`, writes the file at full size and returns its location; without it, returns the image inline where the client can display one, at most 1280px wide and 4096px tall. Use it to see spatial layout; read content with `markdown`/`tree`."""
+        return self.call("screenshot", path=path, selector=selector, backendNodeId=backendNodeId, fullPage=fullPage, url=url, timeout=timeout)
     def scroll(self, *, backendNodeId: int | None = None, x: int | None = None, y: int | None = None) -> Any:
         """Scroll the page or a specific element. Returns the scroll position and current page URL and title."""
         return self.call("scroll", backendNodeId=backendNodeId, x=x, y=y)
     def search(self, *, query: str, timeout: int | None = None) -> Any:
-        """Run a web search and return results as markdown. When BRAVE_API_KEY or TAVILY_API_KEY is set, queries that search API (Brave preferred) and returns a numbered list of {title, url, snippet}. Otherwise (or on API failure) falls back to scraping the DuckDuckGo HTML endpoint — degraded results, may rate-limit on bursty traffic. Prefer this over goto-ing google.com/search directly (Google blocks the browser on User-Agent/TLS). Browser state after this call is unspecified — to interact with a result, use `goto` with its URL; do not assume the browser DOM matches the results page."""
+        """Run a web search and return results as markdown: a numbered list of {title, url, snippet}. Search tries brave, tavily, exa, then keenable in order, each when its API key (BRAVE_API_KEY, TAVILY_API_KEY, EXA_API_KEY or KEENABLE_API_KEY) is set; keenable also works without a key through its public endpoint (rate-limited per client IP). Prefer this over goto-ing google.com/search directly (Google blocks the browser on User-Agent/TLS). The browser does not navigate — to open a result, use `goto` with its URL."""
         return self.call("search", query=query, timeout=timeout)
     def select_option(self, *, value: str, selector: str | None = None, backendNodeId: int | None = None) -> Any:
         """Select an option in a <select> dropdown element by its value. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Dispatches input and change events."""
@@ -200,23 +203,23 @@ Examples (schema → result):
         return await self.call("getUrl")
 
     getUrl = get_url
-    async def goto(self, *, url: str, timeout: int | None = None) -> Any:
+    async def goto(self, *, url: str, timeout: int | None = None, waitUntil: str | None = None) -> Any:
         """Navigate to a specified URL and load the page in memory so it can be reused later for info extraction."""
-        return await self.call("goto", url=url, timeout=timeout)
+        return await self.call("goto", url=url, timeout=timeout, waitUntil=waitUntil)
     async def hover(self, *, selector: str | None = None, backendNodeId: int | None = None) -> Any:
         """Hover over an element, triggering mouseover and mouseenter events. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Useful for menus, tooltips, and hover states."""
         return await self.call("hover", selector=selector, backendNodeId=backendNodeId)
-    async def html(self, *, selector: str | None = None, backendNodeId: int | None = None, url: str | None = None, timeout: int | None = None) -> Any:
+    async def html(self, *, selector: str | None = None, backendNodeId: int | None = None, maxBytes: int | None = None, strip: dict | None = None, url: str | None = None, timeout: int | None = None) -> Any:
         """Raw HTML for the document or, with `selector`/`backendNodeId`, a single node's outerHTML. Verbose; use only when you need attributes that markdown discards."""
-        return await self.call("html", selector=selector, backendNodeId=backendNodeId, url=url, timeout=timeout)
+        return await self.call("html", selector=selector, backendNodeId=backendNodeId, maxBytes=maxBytes, strip=strip, url=url, timeout=timeout)
     async def interactive_elements(self, *, url: str | None = None, timeout: int | None = None) -> Any:
         """Extract interactive elements from the opened page. If a url is provided, it navigates to that url first."""
         return await self.call("interactiveElements", url=url, timeout=timeout)
 
     interactiveElements = interactive_elements
-    async def links(self, *, url: str | None = None, timeout: int | None = None) -> Any:
-        """Extract all links in the opened page as JSON objects with `text` (visible anchor text), `href` (resolved URL), and `backendNodeId` (pass to click/nodeDetails). If a url is provided, it navigates to that url first."""
-        return await self.call("links", url=url, timeout=timeout)
+    async def links(self, *, limit: int | None = None, url: str | None = None, timeout: int | None = None) -> Any:
+        """Extract the visible links in the opened page as JSON objects with `text` (anchor text, falling back to aria-label/title/image alt), `href` (resolved URL), and `backendNodeId` (pass to click/nodeDetails). One entry per href; hidden links are omitted. If a url is provided, it navigates to that url first."""
+        return await self.call("links", limit=limit, url=url, timeout=timeout)
     async def markdown(self, *, selector: str | None = None, backendNodeId: int | None = None, maxBytes: int | None = None, url: str | None = None, timeout: int | None = None) -> Any:
         """Render the page (or a subtree) as markdown. Scope with `selector` or `backendNodeId` to read just the relevant region — full-page markdown is the last resort. Use `maxBytes` to cap long pages."""
         return await self.call("markdown", selector=selector, backendNodeId=backendNodeId, maxBytes=maxBytes, url=url, timeout=timeout)
@@ -228,11 +231,14 @@ Examples (schema → result):
     async def press(self, *, key: str, selector: str | None = None, backendNodeId: int | None = None) -> Any:
         """Press a keyboard key, dispatching keydown and keyup events. Use key names like 'Enter', 'Tab', 'Escape', 'ArrowDown', 'Backspace', or single characters like 'a', '1'. Common shorthand is normalized: 'enter'/'return' → 'Enter', 'esc' → 'Escape', 'up'/'down'/'left'/'right' → 'Arrow*', 'space' → ' '. Pressing 'Enter' on a form input or submit button triggers implicit form submission."""
         return await self.call("press", key=key, selector=selector, backendNodeId=backendNodeId)
+    async def screenshot(self, *, path: str | None = None, selector: str | None = None, backendNodeId: int | None = None, fullPage: bool | None = None, url: str | None = None, timeout: int | None = None) -> Any:
+        """Render the page, or one node, as a PNG: the text layout Lightpanda computes, not a pixel-accurate browser rendering (no images, fonts or CSS colours). With `path`, writes the file at full size and returns its location; without it, returns the image inline where the client can display one, at most 1280px wide and 4096px tall. Use it to see spatial layout; read content with `markdown`/`tree`."""
+        return await self.call("screenshot", path=path, selector=selector, backendNodeId=backendNodeId, fullPage=fullPage, url=url, timeout=timeout)
     async def scroll(self, *, backendNodeId: int | None = None, x: int | None = None, y: int | None = None) -> Any:
         """Scroll the page or a specific element. Returns the scroll position and current page URL and title."""
         return await self.call("scroll", backendNodeId=backendNodeId, x=x, y=y)
     async def search(self, *, query: str, timeout: int | None = None) -> Any:
-        """Run a web search and return results as markdown. When BRAVE_API_KEY or TAVILY_API_KEY is set, queries that search API (Brave preferred) and returns a numbered list of {title, url, snippet}. Otherwise (or on API failure) falls back to scraping the DuckDuckGo HTML endpoint — degraded results, may rate-limit on bursty traffic. Prefer this over goto-ing google.com/search directly (Google blocks the browser on User-Agent/TLS). Browser state after this call is unspecified — to interact with a result, use `goto` with its URL; do not assume the browser DOM matches the results page."""
+        """Run a web search and return results as markdown: a numbered list of {title, url, snippet}. Search tries brave, tavily, exa, then keenable in order, each when its API key (BRAVE_API_KEY, TAVILY_API_KEY, EXA_API_KEY or KEENABLE_API_KEY) is set; keenable also works without a key through its public endpoint (rate-limited per client IP). Prefer this over goto-ing google.com/search directly (Google blocks the browser on User-Agent/TLS). The browser does not navigate — to open a result, use `goto` with its URL."""
         return await self.call("search", query=query, timeout=timeout)
     async def select_option(self, *, value: str, selector: str | None = None, backendNodeId: int | None = None) -> Any:
         """Select an option in a <select> dropdown element by its value. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Dispatches input and change events."""
