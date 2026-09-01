@@ -2,11 +2,17 @@
 
 Lightpanda for Python: scrape and automate the web with `pip install lightpanda`. Browser included, no separate download.
 
-[Lightpanda](https://lightpanda.io) is a lightweight headless browser — an order of magnitude less memory than Chrome stacks. The wheel bundles the browser binary; there is no second install step.
+[Lightpanda](https://lightpanda.io) is an open-source headless browser built
+for web scraping, automation, and AI agents. It executes JavaScript and renders
+pages like a full browser, but starts in milliseconds and uses an order of
+magnitude less memory than Chrome stacks. The wheel bundles the browser binary;
+there is no second install step.
 
 ```bash
 uv add lightpanda        # or: uv pip install lightpanda / pip install lightpanda
 ```
+
+`example.py`:
 
 ```python
 from lightpanda import Browser
@@ -15,34 +21,55 @@ with Browser() as b:
     page = b.new_session()
     page.goto(url="https://example.com")
     data = page.extract(schema={"title": "h1"})
+    print(data)
+```
+
+Run it like any Python script — no driver to install, no browser to download:
+
+```bash
+$ python example.py
+{'title': 'Example Domain'}
 ```
 
 The same API is available for asyncio — `AsyncBrowser` spawns the browser on
-first use and runs sessions concurrently:
+first use and runs sessions concurrently. `async_example.py`:
 
 ```python
+import asyncio
+
 from lightpanda import AsyncBrowser
 
-async with AsyncBrowser() as b:
-    page = await b.new_session()
-    await page.goto(url="https://example.com")
-    data = await page.extract(schema={"title": "h1"})
+
+async def main():
+    async with AsyncBrowser() as b:
+        page = await b.new_session()
+        await page.goto(url="https://example.com")
+        data = await page.extract(schema={"title": "h1"})
+        print(data)
+
+
+asyncio.run(main())
 ```
 
-Every browser tool is a `Session` method (both `waitForSelector` and
-`wait_for_selector` work), typed and documented in your IDE. Replay a saved
-lightpanda agent script without any LLM:
-
-```python
-from lightpanda import run_script
-
-run_script("hn.lp.js", env={"LP_HN_USERNAME": "me"})
+```bash
+python async_example.py
 ```
-
-(`run_script_async` is the awaitable variant.)
 
 The package also puts the full `lightpanda` CLI on PATH (agent REPL, fetch,
 serve).
+
+## How the bindings work
+
+Every browser tool is a `Session` method, typed and documented in your IDE.
+The methods are not written by hand: they are generated from the bundled
+browser's MCP tool schemas (`scripts/generate_methods.py` →
+`lightpanda/_methods.py`), so signatures and docstrings come straight from the
+binary. Both camelCase (`waitForSelector`) and snake_case (`wait_for_selector`)
+names resolve to the same tool.
+
+The bindings follow Lightpanda's development and the package version tracks
+browser releases — there is no backwards-compatibility guarantee: when the
+browser's tools change, the Python methods change with them.
 
 ## Examples
 
