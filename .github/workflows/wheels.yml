@@ -15,7 +15,10 @@ name: wheels
 #   - release published: build + test the browser release with the SAME tag
 #     and publish to PyPI. A release tag on this repo must equal the browser
 #     release tag it ships (e.g. 0.4.0); the wheel version is derived from
-#     it.
+#     it. Releases here are created automatically by the browser repo's
+#     release workflow (its `update-python-package` job) whenever it builds a
+#     version tag, so a browser release flows to PyPI with no polling — the
+#     publish still stops at the pypi environment's required-reviewer gate.
 #   - workflow_dispatch: pick any browser tag and publish target manually.
 
 on:
