@@ -33,6 +33,14 @@ def test_evaluate(browser, fixture_url):
         assert page.evaluate(script="document.title") == "Fixture Home"
 
 
+def test_screenshot_inline_returns_png_bytes(browser, fixture_url):
+    with browser.new_session() as page:
+        page.goto(url=f"{fixture_url}/index.html")
+        png = page.screenshot()
+        assert isinstance(png, bytes)
+        assert png.startswith(b"\x89PNG\r\n\x1a\n")
+
+
 def test_snake_case_alias(browser, fixture_url):
     with browser.new_session() as page:
         page.goto(url=f"{fixture_url}/index.html")

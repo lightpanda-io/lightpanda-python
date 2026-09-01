@@ -8,6 +8,7 @@ Both the original tool name (``waitForSelector``) and its snake_case form
 
 from __future__ import annotations
 
+import base64
 import functools
 import importlib
 import itertools
@@ -79,7 +80,11 @@ class Session(SessionMethods):
         return self._id
 
     def call(self, tool: str, **kwargs):
-        """Invoke a browser tool by name. The generated methods route here."""
+        """Invoke a browser tool by name. The generated methods route here.
+
+        Returns parsed JSON for JSON-carrying tools, ``bytes`` for image
+        results (``screenshot`` without ``path``), otherwise the result text.
+        """
         if self._closed:
             raise ToolError(f"session {self._id} is closed")
         name = self._snake_map.get(tool, tool)
@@ -100,8 +105,12 @@ class Session(SessionMethods):
         text = "\n".join(part.get("text", "") for part in content if part.get("type") == "text")
         if result.get("isError"):
             raise ToolError(text or f"{name} failed")
-        # Tool results are text; JSON payloads (extract, links, tree, ...) are
-        # returned parsed, anything else as the raw string.
+        # Binary results (an inline screenshot) arrive as base64 image parts:
+        # return the decoded bytes. Text results carrying JSON (extract, links,
+        # tree, ...) are returned parsed, anything else as the raw string.
+        images = [base64.b64decode(part["data"]) for part in content if part.get("type") == "image"]
+        if images:
+            return images[0] if len(images) == 1 else images
         try:
             return json.loads(text)
         except ValueError:
