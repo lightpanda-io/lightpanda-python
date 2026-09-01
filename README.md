@@ -44,6 +44,13 @@ run_script("hn.lp.js", env={"LP_HN_USERNAME": "me"})
 The package also puts the full `lightpanda` CLI on PATH (agent REPL, fetch,
 serve).
 
+## Examples
+
+[`examples/`](examples/) scrapes a JavaScript-rendered site that `requests`
+cannot read, analyses the result with pandas/matplotlib, and measures the same
+job against Selenium + headless Chrome (100 quotes in ~3 s / 35 MB vs ~6 s /
+1.2 GB, median of 5 runs). Each script runs standalone: `uv run examples/quotes_analysis.py`.
+
 ## License
 
 This client library is Apache-2.0. The bundled Lightpanda browser binary is
