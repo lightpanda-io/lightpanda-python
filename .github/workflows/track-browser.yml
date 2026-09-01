@@ -31,8 +31,21 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag=$(gh release view --repo "$BROWSER_REPO" --json tagName --jq .tagName)
-          echo "latest browser release: $tag"
+          # Only version-shaped tags, highest by version (compared with any
+          # leading `v` stripped: older tags have it, newer ones don't). Not
+          # `releases/latest`: GitHub ranks that by the tag's commit date, so
+          # the browser's rolling `nightly` release (not flagged prerelease)
+          # wins whenever its commit is newer than the last version's.
+          tag=$(gh release list --repo "$BROWSER_REPO" --exclude-drafts --exclude-pre-releases \
+                  --limit 50 --json tagName --jq '.[].tagName' \
+                | grep -E '^v?[0-9]+(\.[0-9]+)+$' \
+                | awk '{ v = $0; sub(/^v/, "", v); print v "\t" $0 }' \
+                | sort -V -k1,1 | tail -1 | cut -f2)
+          if [ -z "$tag" ]; then
+            echo "::error::no version-shaped release found in $BROWSER_REPO"
+            exit 1
+          fi
+          echo "latest browser version release: $tag"
           if gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
             echo "release $tag already exists here; nothing to do"
             exit 0

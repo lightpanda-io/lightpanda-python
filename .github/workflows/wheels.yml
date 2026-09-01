@@ -70,6 +70,12 @@ jobs:
               ;;
           esac
           cat "$GITHUB_OUTPUT"
+          # A nightly build keeps pyproject's dev version; never let one
+          # reach PyPI, whatever dispatched it.
+          if grep -q '^publish=pypi$' "$GITHUB_OUTPUT" && grep -q '^release_tag=nightly$' "$GITHUB_OUTPUT"; then
+            echo "::error::refusing to publish a nightly build to PyPI (pick a version tag)"
+            exit 1
+          fi
 
   build:
     needs: params
