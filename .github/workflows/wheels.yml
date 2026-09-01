@@ -14,7 +14,7 @@ name: wheels
 #     `nightly` release, no publish.
 #   - release published: build + test the browser release with the SAME tag
 #     and publish to PyPI. A release tag on this repo must equal the browser
-#     release tag it ships (e.g. v0.1.0); the wheel version is derived from
+#     release tag it ships (e.g. 0.4.0); the wheel version is derived from
 #     it.
 #   - workflow_dispatch: pick any browser tag and publish target manually.
 
@@ -99,6 +99,32 @@ jobs:
             -p "${{ matrix.asset }}" -O lightpanda-bin
           chmod +x lightpanda-bin
           ls -la lightpanda-bin
+          # The tool schemas are platform-independent; fetch the one binary
+          # this runner can execute to regenerate the methods from.
+          if [ "${{ matrix.asset }}" = lightpanda-x86_64-linux ]; then
+            cp lightpanda-bin lightpanda-gen
+          else
+            gh release download "${{ needs.params.outputs.release_tag }}" -R "$BROWSER_REPO" \
+              -p lightpanda-x86_64-linux -O lightpanda-gen
+            chmod +x lightpanda-gen
+          fi
+
+      - name: Regenerate tool methods from the bundled binary
+        env:
+          LIGHTPANDA_BIN: ${{ github.workspace }}/lightpanda-gen
+        run: |
+          # The wheel always ships methods matching the binary it bundles.
+          uv run --no-project python scripts/generate_methods.py
+          # PRs and pushes build against nightly: fail on drift so the committed
+          # file (what IDEs and the docs see) keeps up with the browser's tools.
+          case "${{ github.event_name }}" in
+            pull_request|push)
+              git diff --exit-code -- lightpanda/_methods.py || {
+                echo "::error::lightpanda/_methods.py is out of date: run scripts/generate_methods.py and commit the result"
+                exit 1
+              }
+              ;;
+          esac
 
       - name: Set wheel version from tag
         if: needs.params.outputs.release_tag != 'nightly'
