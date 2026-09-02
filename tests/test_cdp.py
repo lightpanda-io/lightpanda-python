@@ -21,7 +21,7 @@ def test_endpoints_and_version(cdp_server):
 
 
 def test_fixed_port(binary):
-    port = _reserve_port()
+    port = _reserve_port(0)
     with CDPServer(binary=binary, port=port) as server:
         assert server.port == port
 

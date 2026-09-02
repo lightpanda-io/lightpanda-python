@@ -11,6 +11,7 @@ import asyncio
 import json
 import os
 import urllib.request
+from collections.abc import Sequence
 from typing import Generic, TypeVar
 
 from .client import _HOST, _spawn, _terminate, find_binary
@@ -27,7 +28,7 @@ class _ServeProcess:
         binary: str | os.PathLike | None = None,
         env: dict[str, str] | None = None,
         verbose: bool = False,
-        args: tuple[str, ...] | list[str] = (),
+        args: Sequence[str] = (),
         port: int | None = None,
     ):
         """``port`` pins the listening port (default: a free one). ``args``
@@ -93,7 +94,7 @@ class _AsyncServeProcess(Generic[_S]):
         binary: str | os.PathLike | None = None,
         env: dict[str, str] | None = None,
         verbose: bool = False,
-        args: tuple[str, ...] | list[str] = (),
+        args: Sequence[str] = (),
         port: int | None = None,
     ):
         """Arguments are forwarded to the sync class."""
@@ -103,10 +104,9 @@ class _AsyncServeProcess(Generic[_S]):
 
     async def start(self):
         """Spawn the server process. Idempotent."""
-        if self._server is None:
-            async with self._start_lock:
-                if self._server is None:
-                    self._server = await asyncio.to_thread(self._sync_cls, **self._kwargs)
+        async with self._start_lock:
+            if self._server is None:
+                self._server = await asyncio.to_thread(self._sync_cls, **self._kwargs)
         return self
 
     def _started(self) -> _S:
@@ -134,16 +134,3 @@ class _AsyncServeProcess(Generic[_S]):
     async def __aexit__(self, *exc):
         await self.close()
 
-
-def _documented(cls: type) -> type:
-    """Copy the public members (and ``__init__``) this module's bases give
-    ``cls`` onto ``cls`` itself, so pdoc and IDEs document them as its own:
-    pdoc hides what is inherited from a private module. Same trick as
-    ``_attach_generated`` in browser.py."""
-    for base in cls.__mro__[1:]:
-        if base.__module__ != __name__:
-            continue
-        for name, member in vars(base).items():
-            if (name == "__init__" or not name.startswith("_")) and name not in vars(cls):
-                setattr(cls, name, member)
-    return cls

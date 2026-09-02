@@ -16,11 +16,12 @@ import json
 import os
 import re
 import subprocess
+from collections.abc import Sequence
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from .client import Client, find_binary
-from .errors import ProtocolError, ScriptError, ToolError
+from .client import Client, _documented, find_binary
+from .errors import ScriptError, ToolError
 
 _SESSION_TOOLS = {"save", "session_new", "session_list", "session_close"}
 
@@ -39,29 +40,21 @@ def _generated(name: str) -> type:
         return type(name, (), {})
 
 
-def _attach_generated(cls: type, methods: type) -> None:
-    """pdoc hides members inherited from a private module; re-attach the
-    generated tool methods as the class's own so they document (and
-    introspect) directly."""
-    for name, member in vars(methods).items():
-        if not name.startswith("_") and name != "call":
-            setattr(cls, name, member)
-
-
 SessionMethods = _generated("SessionMethods")
 
 
+@_documented
 class Session(SessionMethods):
     """One isolated browsing context (own page, cookies, memory).
 
     Do not construct directly — use :meth:`Browser.new_session`.
     """
 
-    def __init__(self, client: Client, session_id: str, tools: dict[str, dict]):
-        self._client = client
+    def __init__(self, browser: Browser, session_id: str):
+        self._client = browser._client
+        self._tools = browser._tools
+        self._snake_map = browser._snake_map
         self._id = session_id
-        self._tools = tools
-        self._snake_map = {_snake(name): name for name in tools}
         self._closed = False
 
         self._client.request(
@@ -121,20 +114,10 @@ class Session(SessionMethods):
         name = self._snake_map.get(attr, attr)
         return name if name in self._tools and name not in _SESSION_TOOLS else None
 
-    def _tool_attrs(self) -> set[str]:
-        names = set()
-        for snake, name in self._snake_map.items():
-            if name not in _SESSION_TOOLS:
-                names.update((snake, name))
-        return names
-
     def __getattr__(self, attr: str):
         if self.__dict__.get("_tools") and (name := self._resolve(attr)):
             return functools.partial(self.call, name)
         raise AttributeError(f"{type(self).__name__!r} object has no attribute {attr!r}")
-
-    def __dir__(self):
-        return sorted(set(super().__dir__()) | self._tool_attrs())
 
     def close(self) -> None:
         if not self._closed:
@@ -147,8 +130,6 @@ class Session(SessionMethods):
     def __exit__(self, *exc):
         self.close()
 
-
-_attach_generated(Session, SessionMethods)
 
 
 class Browser:
@@ -164,7 +145,7 @@ class Browser:
         env: dict[str, str] | None = None,
         timeout: float = 300.0,
         verbose: bool = False,
-        args: tuple[str, ...] | list[str] = (),
+        args: Sequence[str] = (),
     ):
         """``args`` are extra CLI flags for the spawned browser process
         (e.g. ``["--http-cache-dir", path]`` or cookie flags)."""
@@ -178,6 +159,7 @@ class Browser:
             }
             for tool in listed.get("tools", [])
         }
+        self._snake_map = {_snake(name): name for name in self._tools}
 
     @property
     def tools(self) -> dict[str, dict]:
@@ -187,7 +169,7 @@ class Browser:
     def new_session(self) -> Session:
         # itertools.count is atomic, so concurrent callers (the async facade's
         # worker threads) can't mint duplicate session ids.
-        return Session(self._client, f"py{next(self._seq)}", self._tools)
+        return Session(self, f"py{next(self._seq)}")
 
     def close(self) -> None:
         self._client.close()
@@ -211,8 +193,6 @@ def run_script(
     child's environment. Raises :class:`ScriptError` on a non-zero exit.
     """
     path = Path(script)
-    if not path.is_file():
-        raise ScriptError(f"script not found: {path}", returncode=-1)
     proc = subprocess.run(
         [str(find_binary(binary)), "run", str(path)],
         env=os.environ | (env or {}),
@@ -239,4 +219,4 @@ def _version() -> str:
         return "0.0.0.dev0"
 
 
-__all__ = ["Browser", "Session", "run_script", "ProtocolError", "ScriptError", "ToolError"]
+__all__ = ["Browser", "Session", "run_script"]

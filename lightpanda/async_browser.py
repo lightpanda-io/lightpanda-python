@@ -14,9 +14,11 @@ import asyncio
 import contextlib
 import functools
 import os
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 
-from .browser import Browser, Session, _attach_generated, _generated, run_script
+from .browser import Browser, Session, _generated, run_script
+from .client import _documented
 from .errors import LightpandaError
 
 AsyncSessionMethods = _generated("AsyncSessionMethods")
@@ -27,6 +29,7 @@ async def _run(executor: ThreadPoolExecutor, fn, *args, **kwargs):
     return await loop.run_in_executor(executor, functools.partial(fn, *args, **kwargs))
 
 
+@_documented
 class AsyncSession(AsyncSessionMethods):
     """One isolated browsing context (own page, cookies, memory), async.
 
@@ -51,12 +54,8 @@ class AsyncSession(AsyncSessionMethods):
             return functools.partial(self.call, attr)
         raise AttributeError(f"{type(self).__name__!r} object has no attribute {attr!r}")
 
-    def __dir__(self):
-        return sorted(set(super().__dir__()) | self._session._tool_attrs())
-
     async def close(self) -> None:
-        if not self._session._closed:
-            await _run(self._executor, self._session.close)
+        await _run(self._executor, self._session.close)
 
     async def __aenter__(self):
         return self
@@ -64,8 +63,6 @@ class AsyncSession(AsyncSessionMethods):
     async def __aexit__(self, *exc):
         await self.close()
 
-
-_attach_generated(AsyncSession, AsyncSessionMethods)
 
 
 class AsyncBrowser:
@@ -82,7 +79,7 @@ class AsyncBrowser:
         env: dict[str, str] | None = None,
         timeout: float = 300.0,
         verbose: bool = False,
-        args: tuple[str, ...] | list[str] = (),
+        args: Sequence[str] = (),
         max_concurrency: int = 32,
     ):
         """``binary``/``env``/``timeout``/``verbose``/``args`` are forwarded
@@ -107,10 +104,9 @@ class AsyncBrowser:
 
     async def start(self) -> AsyncBrowser:
         """Spawn the browser process and fetch its tool list. Idempotent."""
-        if self._browser is None:
-            async with self._start_lock:
-                if self._browser is None:
-                    self._browser = await _run(self._executor, Browser, **self._kwargs)
+        async with self._start_lock:
+            if self._browser is None:
+                self._browser = await _run(self._executor, Browser, **self._kwargs)
         return self
 
     @property

@@ -30,7 +30,7 @@ from .async_browser import AsyncBrowser, AsyncSession, run_script_async
 from .bidi import AsyncBiDiServer, BiDiServer
 from .browser import Browser, Session, run_script
 from .cdp import AsyncCDPServer, CDPServer
-from .errors import LightpandaError, ProtocolError, ScriptError, ToolError
+from .errors import LightpandaError, ProcessError, ProtocolError, ScriptError, ToolError
 
 __all__ = [
     "Browser",
@@ -44,6 +44,7 @@ __all__ = [
     "BiDiServer",
     "AsyncBiDiServer",
     "LightpandaError",
+    "ProcessError",
     "ProtocolError",
     "ScriptError",
     "ToolError",

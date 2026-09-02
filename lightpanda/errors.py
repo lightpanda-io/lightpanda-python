@@ -2,6 +2,10 @@ class LightpandaError(Exception):
     """Base error for the lightpanda package."""
 
 
+class ProcessError(LightpandaError):
+    """The browser binary could not be found, started, or reached."""
+
+
 class ProtocolError(LightpandaError):
     """JSON-RPC level failure (invalid request, timeout, internal error)."""
 

@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import asyncio
 
-from ._serve import _AsyncServeProcess, _ServeProcess, _documented
-from .client import _HOST
+from ._serve import _AsyncServeProcess, _ServeProcess
+from .client import _HOST, _documented
 
 
 @_documented
