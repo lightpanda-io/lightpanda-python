@@ -55,8 +55,9 @@ asyncio.run(main())
 python async_example.py
 ```
 
-The package also puts the full `lightpanda` CLI on PATH (agent REPL, fetch,
-serve).
+The package also puts the full `lightpanda` CLI on PATH — agent REPL, fetch,
+serve, and the rest: see the
+[command reference](https://lightpanda.io/docs/run-locally/commands).
 
 ## How the bindings work
 
