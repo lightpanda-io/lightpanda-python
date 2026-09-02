@@ -9,11 +9,13 @@ import pytest
 from lightpanda import AsyncBrowser, LightpandaError, ToolError, run_script_async
 
 
-async def test_goto_markdown_and_alias(abrowser, fixture_url):
+async def test_goto_markdown_and_snake_case(abrowser, fixture_url):
     async with abrowser.session() as page:
         await page.goto(url=f"{fixture_url}/index.html")
         assert "Hello from the fixture" in await page.markdown()
-        assert await page.get_url() == await page.getUrl()
+        assert (await page.get_url()).endswith("/index.html")
+        assert not hasattr(page, "getUrl")
+        assert await page.tree(max_depth=1) == await page.call("tree", maxDepth=1)
 
 
 async def test_concurrent_sessions_are_isolated(abrowser, fixture_url):

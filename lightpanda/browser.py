@@ -1,9 +1,10 @@
 """Public API: Browser, Session, run_script.
 
 Session tool methods are generated from the server's ``tools/list`` schemas —
-one method per browser tool, kwargs exactly the tool's schema properties.
-Both the original tool name (``waitForSelector``) and its snake_case form
-(``wait_for_selector``) resolve to the same method.
+one method per browser tool, with the tool name and its schema properties
+in snake_case (``waitForSelector`` → ``wait_for_selector``, ``backendNodeId``
+→ ``backend_node_id``). :meth:`Session.call` is the escape hatch that also
+accepts the raw tool and property names.
 """
 
 from __future__ import annotations
@@ -83,10 +84,13 @@ class Session(SessionMethods):
         name = self._snake_map.get(tool, tool)
         if name not in self._tools:
             raise ToolError(f"unknown tool {tool!r}")
-        kwargs = {k: v for k, v in kwargs.items() if v is not None}
+        # Params are sent under the schema's (camelCase) property names; the
+        # generated methods take their snake_case forms, so map those back.
+        properties = self._tools[name]["schema"].get("properties", {})
+        snake_props = {_snake(prop): prop for prop in properties}
+        kwargs = {snake_props.get(k, k): v for k, v in kwargs.items() if v is not None}
         # The server declares JSON-carrying params (e.g. extract's schema) as
         # strings; serialize dict/list values passed for any such param.
-        properties = self._tools[name]["schema"].get("properties", {})
         for key, value in kwargs.items():
             if isinstance(value, (dict, list)) and properties.get(key, {}).get("type") == "string":
                 kwargs[key] = json.dumps(value)
@@ -110,9 +114,9 @@ class Session(SessionMethods):
             return text
 
     def _resolve(self, attr: str) -> str | None:
-        """The tool name behind a public attribute (snake or camel), if any."""
-        name = self._snake_map.get(attr, attr)
-        return name if name in self._tools and name not in _SESSION_TOOLS else None
+        """The tool name behind a snake_case public attribute, if any."""
+        name = self._snake_map.get(attr)
+        return name if name is not None and name not in _SESSION_TOOLS else None
 
     def __getattr__(self, attr: str):
         if self.__dict__.get("_tools") and (name := self._resolve(attr)):

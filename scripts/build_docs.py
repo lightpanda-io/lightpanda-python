@@ -1,6 +1,6 @@
 """Generate API documentation with pdoc (zignal's flow, adapted).
 
-Usage, from bindings/python (needs a lightpanda binary for regeneration):
+Usage (needs a lightpanda binary for regeneration):
     uv run --group docs python scripts/build_docs.py
 """
 

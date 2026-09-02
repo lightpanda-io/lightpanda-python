@@ -124,8 +124,11 @@ Every browser tool is a `Session` method, typed and documented in your IDE.
 The methods are not written by hand: they are generated from the bundled
 browser's MCP tool schemas (`scripts/generate_methods.py` →
 `lightpanda/_methods.py`), so signatures and docstrings come straight from the
-binary. Both camelCase (`waitForSelector`) and snake_case (`wait_for_selector`)
-names resolve to the same tool.
+binary, with tool and parameter names in snake_case (`waitForSelector` →
+`wait_for_selector`, `backendNodeId` → `backend_node_id`). `Session.call` is
+the escape hatch that takes the raw tool and parameter names as the MCP
+server declares them. The full API reference is published at
+[lightpanda.io/lightpanda-python](https://lightpanda.io/lightpanda-python/).
 
 The bindings follow Lightpanda's development and the package version tracks
 browser releases — there is no backwards-compatibility guarantee: when the
@@ -198,3 +201,7 @@ maintainer approves the `pypi` environment deployment on the run page. A
 release can also be triggered by hand: create a GitHub release here whose tag
 matches a browser release tag, or use the `workflow_dispatch` path (any
 browser tag, publish to TestPyPI or PyPI) for dry runs.
+
+The same release event runs `.github/workflows/docs.yml`, which regenerates
+the API reference from that browser release with pdoc and deploys it to GitHub
+Pages. It can also be dispatched by hand for any browser tag to preview.
