@@ -59,6 +59,34 @@ The package also puts the full `lightpanda` CLI on PATH — agent REPL, fetch,
 serve, and the rest: see the
 [command reference](https://lightpanda.io/docs/run-locally/commands).
 
+## Drive it with Playwright or Puppeteer
+
+Lightpanda has its own Chrome DevTools Protocol server, so existing
+Playwright/Puppeteer code works against it without Chromium. `CDPServer`
+starts `lightpanda serve` on a free localhost port and hands you the
+endpoint:
+
+```python
+from lightpanda import CDPServer
+from playwright.sync_api import sync_playwright
+
+with CDPServer() as server, sync_playwright() as p:
+    browser = p.chromium.connect_over_cdp(server.ws_endpoint)
+    page = browser.new_context().new_page()
+    page.goto("https://example.com")
+    print(page.title())
+```
+
+`AsyncCDPServer` is the asyncio twin (`async with AsyncCDPServer() as server`).
+`server.ws_endpoint` is a plain CDP WebSocket, so Node clients connect to it
+too: Puppeteer with `puppeteer.connect({ browserWSEndpoint })` and Playwright
+with `chromium.connectOverCDP(...)`. Pass `port=` to pin the port, and
+`args=` for `lightpanda serve` flags such as `--cdp-max-connections` or
+`--http-proxy`. This is a separate process from `Browser` (the binary
+cannot serve MCP and CDP from the same one). The package itself needs only
+Python's standard library; Playwright is a dev-only test dependency and
+`connect_over_cdp` never downloads a browser.
+
 ## How the bindings work
 
 Every browser tool is a `Session` method, typed and documented in your IDE.
@@ -96,6 +124,9 @@ lightpanda binary. Then:
 ```bash
 uv run --group dev pytest tests
 ```
+
+The `dev` group includes `playwright` for the CDP tests (its pip package
+only; no `playwright install`). Those tests skip when it is absent.
 
 Regenerate the tool methods (`lightpanda/_methods.py`) and the API docs:
 

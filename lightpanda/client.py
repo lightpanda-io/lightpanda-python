@@ -24,6 +24,7 @@ from .errors import LightpandaError, ProtocolError
 
 BINARY_NAME = "lightpanda.exe" if sys.platform == "win32" else "lightpanda"
 
+_HOST = "127.0.0.1"
 _SPAWN_ATTEMPTS = 3
 _READY_TIMEOUT = 15.0
 
@@ -76,10 +77,83 @@ def find_binary(explicit: str | os.PathLike | None = None) -> Path:
     )
 
 
-def _free_port() -> int:
+def _reserve_port(port: int = 0) -> int:
+    """Bind-and-release ``port`` (0: any free one) and return it. SO_REUSEADDR
+    mirrors the browser's own bind, so a TIME_WAIT leftover doesn't count as
+    a collision."""
     with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            s.bind((_HOST, port))
+        except OSError as err:
+            raise LightpandaError(f"port {port} is already in use") from err
         return s.getsockname()[1]
+
+
+def _wait_ready(proc: subprocess.Popen, port: int) -> None:
+    deadline = time.monotonic() + _READY_TIMEOUT
+    while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            raise LightpandaError(
+                f"lightpanda exited during startup (code {proc.returncode})"
+            )
+        try:
+            with socket.create_connection((_HOST, port), timeout=0.25):
+                return
+        except OSError:
+            time.sleep(0.05)
+    raise LightpandaError("timed out waiting for lightpanda to listen")
+
+
+def _terminate(proc: subprocess.Popen) -> None:
+    if proc.poll() is not None:
+        return
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+
+
+def _spawn(
+    binary: Path,
+    mode: str,
+    args: tuple[str, ...] | list[str],
+    env: dict[str, str] | None,
+    verbose: bool,
+    port: int | None = None,
+) -> tuple[subprocess.Popen, int]:
+    """Start ``lightpanda <mode> --port N <args>`` and wait until it listens.
+
+    With ``port=None`` a free port is picked; a collision (the browser exits
+    with "address already in use") is retried on a fresh port. A caller-chosen
+    ``port`` gets a single attempt.
+    """
+    child_env = os.environ | (env or {})
+    stderr = None if verbose else subprocess.DEVNULL
+    last_error: Exception | None = None
+    for _ in range(_SPAWN_ATTEMPTS if port is None else 1):
+        chosen = _reserve_port(port or 0)
+        proc = subprocess.Popen(
+            [str(binary), mode, "--port", str(chosen), *args],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=stderr,
+            env=child_env,
+            preexec_fn=_die_with_parent if sys.platform == "linux" else None,
+        )
+        try:
+            _wait_ready(proc, chosen)
+        except LightpandaError as err:
+            last_error = err
+            _terminate(proc)
+            continue
+        return proc, chosen
+    raise LightpandaError(
+        f"failed to start `lightpanda {mode}`: {last_error}; "
+        "run with verbose=True to see the browser log"
+    )
 
 
 class Client:
@@ -93,55 +167,15 @@ class Client:
         verbose: bool = False,
         args: tuple[str, ...] | list[str] = (),
     ):
-        binary = find_binary(binary)
         self._timeout = timeout
         self._lock = threading.Lock()
         self._id = 0
-        self._proc: subprocess.Popen | None = None
-        self._port = 0
-
-        child_env = os.environ | (env or {})
-        stderr = None if verbose else subprocess.DEVNULL
-        last_error: Exception | None = None
-        for _ in range(_SPAWN_ATTEMPTS):
-            port = _free_port()
-            proc = subprocess.Popen(
-                [str(binary), "mcp", "--port", str(port), *args],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=stderr,
-                env=child_env,
-                preexec_fn=_die_with_parent if sys.platform == "linux" else None,
-            )
-            try:
-                self._wait_ready(proc, port)
-            except LightpandaError as err:
-                last_error = err
-                self._terminate(proc)
-                continue
-            self._proc = proc
-            self._port = port
-            return
-        raise LightpandaError(f"failed to start lightpanda: {last_error}")
-
-    @staticmethod
-    def _wait_ready(proc: subprocess.Popen, port: int) -> None:
-        deadline = time.monotonic() + _READY_TIMEOUT
-        while time.monotonic() < deadline:
-            if proc.poll() is not None:
-                raise LightpandaError(
-                    f"lightpanda exited during startup (code {proc.returncode})"
-                )
-            try:
-                with socket.create_connection(("127.0.0.1", port), timeout=0.25):
-                    return
-            except OSError:
-                time.sleep(0.05)
-        raise LightpandaError("timed out waiting for lightpanda to listen")
+        self._proc: subprocess.Popen | None
+        self._proc, self._port = _spawn(find_binary(binary), "mcp", args, env, verbose)
 
     @property
     def base_url(self) -> str:
-        return f"http://127.0.0.1:{self._port}/"
+        return f"http://{_HOST}:{self._port}/"
 
     def _http(self, method: str, body: bytes | None, session_id: str | None) -> tuple[int, bytes]:
         headers = {"Content-Type": "application/json"}
@@ -187,20 +221,9 @@ class Client:
     def delete_session(self, session_id: str) -> None:
         self._http("DELETE", None, session_id)
 
-    @staticmethod
-    def _terminate(proc: subprocess.Popen) -> None:
-        if proc.poll() is not None:
-            return
-        proc.terminate()
-        try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait()
-
     def close(self) -> None:
         if self._proc is not None:
-            self._terminate(self._proc)
+            _terminate(self._proc)
             self._proc = None
 
     def __del__(self):

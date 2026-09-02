@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from conftest import alive
 from lightpanda import Browser, LightpandaError, ToolError, run_script, client
 
 
@@ -78,37 +79,31 @@ def test_extra_args_passthrough(binary, fixture_url, tmp_path):
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="PDEATHSIG is Linux-only")
-def test_sidecar_dies_with_killed_parent(binary, tmp_path):
+@pytest.mark.parametrize(
+    "spawn",
+    [
+        "from lightpanda import Browser; b = Browser(binary=sys.argv[1]); pid = b._client._proc.pid",
+        "from lightpanda import CDPServer; s = CDPServer(binary=sys.argv[1]); pid = s._proc.pid",
+    ],
+    ids=["Browser", "CDPServer"],
+)
+def test_sidecar_dies_with_killed_parent(binary, tmp_path, spawn):
     child_src = tmp_path / "spawn_and_hang.py"
-    child_src.write_text(
-        "import os, sys, time\n"
-        "from lightpanda import Browser\n"
-        "b = Browser(binary=sys.argv[1])\n"
-        "print(b._client._proc.pid, flush=True)\n"
-        "time.sleep(60)\n"
-    )
+    child_src.write_text(f"import sys, time\n{spawn}\nprint(pid, flush=True)\ntime.sleep(60)\n")
     env = dict(os.environ, PYTHONPATH=str(Path(__file__).parent.parent))
     child = subprocess.Popen(
         [sys.executable, str(child_src), binary],
         stdout=subprocess.PIPE, text=True, env=env,
     )
     sidecar_pid = int(child.stdout.readline())
-    assert _alive(sidecar_pid)
+    assert alive(sidecar_pid)
 
     os.kill(child.pid, signal.SIGKILL)
     child.wait()
     deadline = time.monotonic() + 5
-    while time.monotonic() < deadline and _alive(sidecar_pid):
+    while time.monotonic() < deadline and alive(sidecar_pid):
         time.sleep(0.1)
-    assert not _alive(sidecar_pid), "sidecar survived its parent's SIGKILL"
-
-
-def _alive(pid):
-    try:
-        os.kill(pid, 0)
-        return True
-    except ProcessLookupError:
-        return False
+    assert not alive(sidecar_pid), "sidecar survived its parent's SIGKILL"
 
 
 def test_run_script(binary, fixture_url, tmp_path):
