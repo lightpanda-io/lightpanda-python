@@ -128,7 +128,7 @@ binary, with tool and parameter names in snake_case (`waitForSelector` →
 `wait_for_selector`, `backendNodeId` → `backend_node_id`). `Session.call` is
 the escape hatch that takes the raw tool and parameter names as the MCP
 server declares them. The full API reference is published at
-[lightpanda.io/lightpanda-python](https://lightpanda.io/lightpanda-python/).
+[lightpanda.io/docs/python](https://lightpanda.io/docs/python/).
 
 The bindings follow Lightpanda's development and the package version tracks
 browser releases — there is no backwards-compatibility guarantee: when the
@@ -202,6 +202,7 @@ release can also be triggered by hand: create a GitHub release here whose tag
 matches a browser release tag, or use the `workflow_dispatch` path (any
 browser tag, publish to TestPyPI or PyPI) for dry runs.
 
-The same release event runs `.github/workflows/docs.yml`, which regenerates
-the API reference from that browser release with pdoc and deploys it to GitHub
-Pages. It can also be dispatched by hand for any browser tag to preview.
+The API reference at [lightpanda.io/docs/python](https://lightpanda.io/docs/python/)
+is regenerated from the PyPI package by the
+[docs repo's `python-reference` workflow](https://github.com/lightpanda-io/docs/blob/main/.github/workflows/python-reference.yml),
+so a new release shows up there with no step on this side.
