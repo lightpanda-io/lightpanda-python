@@ -22,10 +22,12 @@ async with AsyncBrowser() as b:
 
 For Playwright or Puppeteer code, ``CDPServer`` runs the browser's own
 Chrome DevTools Protocol server and hands you the endpoint to connect to
-(see its docs for an example).
+(see its docs for an example). For Selenium, ``BiDiServer`` serves WebDriver
+BiDi the same way and hands you the ``command_executor`` URL.
 """
 
 from .async_browser import AsyncBrowser, AsyncSession, run_script_async
+from .bidi import AsyncBiDiServer, BiDiServer
 from .browser import Browser, Session, run_script
 from .cdp import AsyncCDPServer, CDPServer
 from .errors import LightpandaError, ProtocolError, ScriptError, ToolError
@@ -39,6 +41,8 @@ __all__ = [
     "run_script_async",
     "CDPServer",
     "AsyncCDPServer",
+    "BiDiServer",
+    "AsyncBiDiServer",
     "LightpandaError",
     "ProtocolError",
     "ScriptError",

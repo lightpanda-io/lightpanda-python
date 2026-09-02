@@ -87,6 +87,37 @@ cannot serve MCP and CDP from the same one). The package itself needs only
 Python's standard library; Playwright is a dev-only test dependency and
 `connect_over_cdp` never downloads a browser.
 
+## Drive it with Selenium (WebDriver BiDi)
+
+The browser also speaks [WebDriver BiDi](https://w3c.github.io/webdriver-bidi/).
+`BiDiServer` starts `lightpanda serve --protocol webdriver` and hands you the
+URL Selenium's `webdriver.Remote` takes as `command_executor`:
+
+```python
+from lightpanda import BiDiServer
+from selenium import webdriver
+from selenium.webdriver.common.options import ArgOptions
+
+options = ArgOptions()
+options.web_socket_url = True  # ask for a WebDriver BiDi session
+
+with BiDiServer() as server:
+    driver = webdriver.Remote(command_executor=server.http_endpoint, options=options)
+    context = driver.browsing_context.create(type="tab")
+    driver.browsing_context.navigate(context=context, url="https://example.com", wait="complete")
+    print(driver.script.execute("() => document.title", context_id=context)["value"])
+    driver.quit()
+```
+
+`AsyncBiDiServer` is the asyncio twin, and `server.bidi_endpoint`
+(`ws://127.0.0.1:<port>/session`) is the raw BiDi WebSocket for clients that
+speak the protocol directly. The browser serves the BiDi modules plus the
+classic session bootstrap Selenium needs, not the classic WebDriver
+commands: `driver.get`, `find_element` and friends are not implemented, so
+drive the page through `driver.browsing_context` and `driver.script` with an
+explicit context, created first as above. Pass `args=["--protocol", "cdp"]`
+to serve CDP on the same port as well.
+
 ## How the bindings work
 
 Every browser tool is a `Session` method, typed and documented in your IDE.
@@ -125,8 +156,9 @@ lightpanda binary. Then:
 uv run --group dev pytest tests
 ```
 
-The `dev` group includes `playwright` for the CDP tests (its pip package
-only; no `playwright install`). Those tests skip when it is absent.
+The `dev` group includes `playwright` and `selenium` as clients for the CDP
+and BiDi tests (their pip packages only; no browser or driver download).
+Those tests skip when the client is absent.
 
 Regenerate the tool methods (`lightpanda/_methods.py`) and the API docs:
 
