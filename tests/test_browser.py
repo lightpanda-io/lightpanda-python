@@ -42,10 +42,15 @@ def test_screenshot_inline_returns_png_bytes(browser, fixture_url):
         assert png.startswith(b"\x89PNG\r\n\x1a\n")
 
 
-def test_snake_case_alias(browser, fixture_url):
+def test_snake_case_only(browser, fixture_url):
     with browser.new_session() as page:
         page.goto(url=f"{fixture_url}/index.html")
-        assert page.get_url() == page.getUrl()
+        assert page.get_url().endswith("/index.html")
+        assert not hasattr(page, "getUrl")
+        # Parameters are snake_case too; call() also takes the schema's names.
+        shallow = page.tree(max_depth=1)
+        assert shallow == page.call("tree", maxDepth=1)
+        assert len(str(shallow)) < len(str(page.tree()))
 
 
 def test_sessions_are_isolated(browser, fixture_url):
