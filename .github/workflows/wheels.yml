@@ -183,9 +183,10 @@ jobs:
       - name: Install the wheel into a clean venv
         run: |
           uv venv wheel-env
-          # playwright is a CDP client here (connect_over_cdp), so no browser
-          # download (`playwright install`) is needed.
-          uv pip install --python wheel-env dist/*.whl pytest pytest-asyncio playwright
+          # playwright (connect_over_cdp) and selenium (webdriver.Remote) are
+          # only clients of the bundled browser here: no browser or driver
+          # download is needed.
+          uv pip install --python wheel-env dist/*.whl pytest pytest-asyncio playwright selenium
 
       - name: Run the test suite against the installed wheel
         run: |

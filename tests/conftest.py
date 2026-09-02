@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from lightpanda import AsyncBrowser, Browser, CDPServer
+from lightpanda import AsyncBrowser, BiDiServer, Browser, CDPServer
 
 BROWSER_CHECKOUT = Path(__file__).parent.parent.parent / "browser"
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -58,4 +58,10 @@ async def abrowser(browser):
 @pytest.fixture(scope="session")
 def cdp_server(binary):
     with CDPServer(binary=binary) as server:
+        yield server
+
+
+@pytest.fixture(scope="session")
+def bidi_server(binary):
+    with BiDiServer(binary=binary) as server:
         yield server
