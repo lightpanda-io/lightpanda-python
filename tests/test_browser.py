@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from lightpanda import Browser, ToolError, run_script
+from lightpanda import Browser, LightpandaError, ToolError, run_script, client
 
 
 def test_goto_and_markdown(browser, fixture_url):
@@ -115,3 +115,26 @@ def test_run_script(binary, fixture_url, tmp_path):
     script = tmp_path / "visit.js"
     script.write_text('const page = new Page();\nawait page.goto("$LP_TEST_URL");\n')
     run_script(script, env={"LP_TEST_URL": f"{fixture_url}/index.html"}, binary=binary)
+
+
+def test_find_binary_skips_own_console_script(tmp_path, monkeypatch):
+    # `uv run` puts the venv's bin dir first on PATH, where the package's
+    # `lightpanda` entry point shadows a real binary further along.
+    monkeypatch.delenv("LIGHTPANDA_BIN", raising=False)
+    monkeypatch.setattr(client, "BINARY_NAME", "lightpanda-probe")
+    venv_bin, real_bin = tmp_path / "venv", tmp_path / "real"
+    venv_bin.mkdir()
+    real_bin.mkdir()
+    script = venv_bin / "lightpanda-probe"
+    script.write_text("#!/usr/bin/python3\nfrom lightpanda.cli import main\nmain()\n")
+    script.chmod(0o755)
+
+    monkeypatch.setenv("PATH", str(venv_bin))
+    with pytest.raises(LightpandaError, match="could not find"):
+        client.find_binary()
+
+    real = real_bin / "lightpanda-probe"
+    real.write_bytes(b"\x7fELF not really")
+    real.chmod(0o755)
+    monkeypatch.setenv("PATH", os.pathsep.join([str(venv_bin), str(real_bin)]))
+    assert client.find_binary() == real

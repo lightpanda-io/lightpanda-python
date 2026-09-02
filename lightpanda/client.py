@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import socket
 import subprocess
 import sys
@@ -42,9 +41,21 @@ def _die_with_parent():
         pass
 
 
+def _is_console_script(path: Path) -> bool:
+    """True for this package's own ``lightpanda`` entry point (the trampoline
+    pip/uv put on PATH), which must not be mistaken for the browser."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(512)
+    except OSError:
+        return False
+    return head.startswith(b"#!") and b"lightpanda.cli" in head
+
+
 def find_binary(explicit: str | os.PathLike | None = None) -> Path:
     """Locate the lightpanda binary: explicit arg, $LIGHTPANDA_BIN, the
-    bundled package copy, then PATH."""
+    bundled package copy, then PATH (skipping this package's own console
+    script, which shadows a real binary when a venv's bin dir comes first)."""
     candidates: list[Path] = []
     if explicit:
         candidates.append(Path(explicit))
@@ -52,12 +63,12 @@ def find_binary(explicit: str | os.PathLike | None = None) -> Path:
     if env:
         candidates.append(Path(env))
     candidates.append(Path(__file__).parent / BINARY_NAME)
-    which = shutil.which("lightpanda")
-    if which:
-        candidates.append(Path(which))
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        if entry:
+            candidates.append(Path(entry) / BINARY_NAME)
 
     for candidate in candidates:
-        if candidate.is_file():
+        if candidate.is_file() and not _is_console_script(candidate):
             return candidate
     raise LightpandaError(
         "could not find the lightpanda binary; reinstall the package, set "
