@@ -19,10 +19,15 @@ async with AsyncBrowser() as b:
     await page.goto(url="https://example.com")
     data = await page.extract(schema={"title": "h1"})
 ```
+
+For Playwright or Puppeteer code, ``CDPServer`` runs the browser's own
+Chrome DevTools Protocol server and hands you the endpoint to connect to
+(see its docs for an example).
 """
 
 from .async_browser import AsyncBrowser, AsyncSession, run_script_async
 from .browser import Browser, Session, run_script
+from .cdp import AsyncCDPServer, CDPServer
 from .errors import LightpandaError, ProtocolError, ScriptError, ToolError
 
 __all__ = [
@@ -32,6 +37,8 @@ __all__ = [
     "AsyncBrowser",
     "AsyncSession",
     "run_script_async",
+    "CDPServer",
+    "AsyncCDPServer",
     "LightpandaError",
     "ProtocolError",
     "ScriptError",
