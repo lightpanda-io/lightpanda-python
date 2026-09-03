@@ -202,6 +202,14 @@ release can also be triggered by hand: create a GitHub release here whose tag
 matches a browser release tag, or use the `workflow_dispatch` path (any
 browser tag, publish to TestPyPI or PyPI) for dry runs.
 
+To ship a packaging or client-side fix without waiting for a new browser
+release, create a GitHub release here tagged `<browser tag>-N`, e.g.
+`0.4.0-1`: it bundles browser `0.4.0` again and publishes as the PEP 440
+post-release `0.4.0.post1` (`.postN` is accepted as the tag too). Bare
+`pip install lightpanda`, `>=` and `~=` requirements pick post-releases up;
+an exact `==0.4.0` pin deliberately does not, so pin with `~=0.4.0` to
+receive them. The `workflow_dispatch` path has a matching `post` input.
+
 The API reference at [lightpanda.io/docs/python](https://lightpanda.io/docs/python/)
 is regenerated from the PyPI package by the
 [docs repo's `python-reference` workflow](https://github.com/lightpanda-io/docs/blob/main/.github/workflows/python-reference.yml),

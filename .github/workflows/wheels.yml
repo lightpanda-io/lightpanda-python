@@ -12,14 +12,18 @@ name: wheels
 # Triggers:
 #   - pull_request / push to main: build + test against the browser
 #     `nightly` release, no publish.
-#   - release published: build + test the browser release with the SAME tag
-#     and publish to PyPI. A release tag on this repo must equal the browser
-#     release tag it ships (e.g. 0.4.0); the wheel version is derived from
-#     it. Releases here are created automatically by the browser repo's
-#     release workflow (its `update-python-package` job) whenever it builds a
-#     version tag, so a browser release flows to PyPI with no polling — the
-#     publish still stops at the pypi environment's required-reviewer gate.
-#   - workflow_dispatch: pick any browser tag and publish target manually.
+#   - release published: build + test the browser release named by the tag
+#     and publish to PyPI. A release tag on this repo is the browser release
+#     tag it ships (e.g. 0.4.0), optionally followed by `-N` (or `.postN`) for
+#     a Python-only re-release of that same browser version: `0.4.0-1` bundles
+#     browser 0.4.0 and publishes as the PEP 440 post-release `0.4.0.post1`.
+#     Plain `X.Y.Z` releases here are created automatically by the browser
+#     repo's release workflow (its `update-python-package` job) whenever it
+#     builds a version tag, so a browser release flows to PyPI with no
+#     polling — the publish still stops at the pypi environment's
+#     required-reviewer gate.
+#   - workflow_dispatch: pick any browser tag, an optional post-release
+#     number and the publish target manually.
 
 on:
   pull_request:
@@ -32,6 +36,9 @@ on:
       release:
         description: "browser release tag to bundle (nightly or a version tag)"
         default: "nightly"
+      post:
+        description: "post-release number (publishes <release>.post<N>; leave empty for none)"
+        default: ""
       publish:
         description: "where to publish"
         type: choice
@@ -46,39 +53,67 @@ env:
   BROWSER_REPO: lightpanda-io/browser
 
 jobs:
-  # Map the triggering event to the browser tag to bundle and the publish
-  # target, so the downstream jobs don't each re-derive it.
+  # Map the triggering event to the browser tag to bundle, the wheel version
+  # and the publish target, so the downstream jobs don't each re-derive them.
   params:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       release_tag: ${{ steps.resolve.outputs.release_tag }}
+      wheel_version: ${{ steps.resolve.outputs.wheel_version }}
       publish: ${{ steps.resolve.outputs.publish }}
     steps:
-      - name: Resolve release tag and publish target
+      - name: Resolve browser tag, wheel version and publish target
         id: resolve
         run: |
           case "${{ github.event_name }}" in
             release)
-              echo "release_tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
-              echo "publish=pypi" >> "$GITHUB_OUTPUT"
+              tag="${{ github.event.release.tag_name }}"
+              publish=pypi
               ;;
             workflow_dispatch)
-              echo "release_tag=${{ inputs.release }}" >> "$GITHUB_OUTPUT"
-              echo "publish=${{ inputs.publish }}" >> "$GITHUB_OUTPUT"
+              tag="${{ inputs.release }}"
+              [ -n "${{ inputs.post }}" ] && tag="$tag-${{ inputs.post }}"
+              publish="${{ inputs.publish }}"
               ;;
             *)
-              echo "release_tag=nightly" >> "$GITHUB_OUTPUT"
-              echo "publish=none" >> "$GITHUB_OUTPUT"
+              tag=nightly
+              publish=none
               ;;
           esac
-          cat "$GITHUB_OUTPUT"
-          # A nightly build keeps pyproject's dev version; never let one
-          # reach PyPI, whatever dispatched it.
-          if grep -q '^publish=pypi$' "$GITHUB_OUTPUT" && grep -q '^release_tag=nightly$' "$GITHUB_OUTPUT"; then
+
+          # Split the tag into the browser release to bundle and the wheel
+          # version. `X.Y.Z` ships browser X.Y.Z as version X.Y.Z; `X.Y.Z-N`
+          # (Debian style) or `X.Y.Z.postN` ships the same browser X.Y.Z as
+          # the PEP 440 post-release X.Y.Z.postN — a Python-only re-release.
+          # A nightly build keeps pyproject's dev version (empty wheel_version).
+          tag="${tag#v}"
+          case "$tag" in
+            nightly)      browser=nightly;         version= ;;
+            *-[0-9]*)     browser="${tag%-*}";     version="${tag%-*}.post${tag##*-}" ;;
+            *.post[0-9]*) browser="${tag%.post*}"; version="$tag" ;;
+            *)            browser="$tag";          version="$tag" ;;
+          esac
+          if [ "$browser" != nightly ] && ! echo "$browser" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::'$tag' is not a browser release tag (X.Y.Z, optionally followed by -N or .postN)"
+            exit 1
+          fi
+          if [ -n "$version" ] && ! echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(\.post[0-9]+)?$'; then
+            echo "::error::'$tag' does not map to a PEP 440 version (got '$version')"
+            exit 1
+          fi
+          # Never let a nightly build reach PyPI, whatever dispatched it.
+          if [ "$publish" = pypi ] && [ "$browser" = nightly ]; then
             echo "::error::refusing to publish a nightly build to PyPI (pick a version tag)"
             exit 1
           fi
+
+          {
+            echo "release_tag=$browser"
+            echo "wheel_version=$version"
+            echo "publish=$publish"
+          } >> "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
 
   build:
     needs: params
@@ -136,11 +171,11 @@ jobs:
           esac
 
       - name: Set wheel version from tag
-        if: needs.params.outputs.release_tag != 'nightly'
+        if: needs.params.outputs.wheel_version != ''
         run: |
-          # Wheel version == browser release tag (PEP 440 expects no leading v).
-          tag="${{ needs.params.outputs.release_tag }}"
-          sed -i "s/^version = .*/version = \"${tag#v}\"/" pyproject.toml
+          # Already normalized by the params job (X.Y.Z or X.Y.Z.postN), so the
+          # wheel filename and the PyPI listing match the tag as written here.
+          sed -i 's/^version = .*/version = "${{ needs.params.outputs.wheel_version }}"/' pyproject.toml
           grep '^version' pyproject.toml
 
       - name: Build wheel
