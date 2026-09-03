@@ -128,7 +128,7 @@ binary, with tool and parameter names in snake_case (`waitForSelector` →
 `wait_for_selector`, `backendNodeId` → `backend_node_id`). `Session.call` is
 the escape hatch that takes the raw tool and parameter names as the MCP
 server declares them. The full API reference is published at
-[lightpanda.io/docs/python](https://lightpanda.io/docs/python/).
+[lightpanda.io/docs/reference/python-api](https://lightpanda.io/docs/reference/python-api).
 
 The bindings follow Lightpanda's development and the package version tracks
 browser releases — there is no backwards-compatibility guarantee: when the
@@ -210,7 +210,9 @@ post-release `0.4.0.post1` (`.postN` is accepted as the tag too). Bare
 an exact `==0.4.0` pin deliberately does not, so pin with `~=0.4.0` to
 receive them. The `workflow_dispatch` path has a matching `post` input.
 
-The API reference at [lightpanda.io/docs/python](https://lightpanda.io/docs/python/)
-is regenerated from the PyPI package by the
+The API reference at
+[lightpanda.io/docs/reference/python-api](https://lightpanda.io/docs/reference/python-api)
+is regenerated daily from this repository's `main` branch by the
 [docs repo's `python-reference` workflow](https://github.com/lightpanda-io/docs/blob/main/.github/workflows/python-reference.yml),
-so a new release shows up there with no step on this side.
+so a merged docstring or signature change shows up there with no step on this
+side.
