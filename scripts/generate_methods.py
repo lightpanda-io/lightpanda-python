@@ -2,7 +2,9 @@
 
 Emits one concrete, annotated, documented method per browser tool, with the
 tool name and its parameters in snake_case, all forwarding to ``Session.call``
-(which maps them back to the schema's names). Being real code, the methods are
+(which maps them back to the schema's names). Each docstring carries the tool
+description and a Google-style ``Args:`` section from the schema's property
+descriptions, so IDEs and pdoc show what every argument means. Being real code, the methods are
 visible to IDEs, type checkers, and pdoc alike. Run with a binary available:
 
     uv run --no-project python scripts/generate_methods.py
@@ -45,9 +47,19 @@ class {cls}:
 '''
 
 
-def docstring(text: str) -> str:
-    body = text.strip().replace("\\", "\\\\").replace('"""', '\\"\\"\\"')
-    return f'        """{body}"""'
+def docstring(description: str, args: list[tuple[str, str]]) -> str:
+    """The method docstring: the tool description, then a Google-style
+    ``Args:`` section built from the schema's property descriptions."""
+    text = description.strip()
+    documented = [(arg, desc.strip()) for arg, desc in args if desc.strip()]
+    if documented:
+        text += "\n\nArgs:\n" + "\n".join(f"    {arg}: {desc}" for arg, desc in documented)
+    body = text.replace("\\", "\\\\").replace('"""', '\\"\\"\\"')
+    lines = body.split("\n")
+    if len(lines) == 1:
+        return f'        """{body}"""'
+    indented = "\n".join(f"        {line}" if line else "" for line in lines)
+    return f'        """{indented.lstrip()}\n        """'
 
 
 def method_source(name: str, spec: dict, is_async: bool = False) -> str:
@@ -65,6 +77,7 @@ def method_source(name: str, spec: dict, is_async: bool = False) -> str:
     if properties:
         params.append("*")
     forwards = []
+    documented = []
     for prop in sorted(properties, key=lambda p: p not in required):
         arg = args[prop]
         py_type = PY_TYPES.get(properties[prop].get("type", ""), "Any")
@@ -75,13 +88,14 @@ def method_source(name: str, spec: dict, is_async: bool = False) -> str:
         else:
             params.append(f"{arg}: {py_type} | None = None")
         forwards.append(f"{arg}={arg}")
+        documented.append((arg, properties[prop].get("description", "")))
 
     snake = _snake(name)
     call_args = ", ".join([f'"{name}"'] + forwards)
     prefix = "async def" if is_async else "def"
     await_ = "await " if is_async else ""
     lines = [f"    {prefix} {snake}({', '.join(params)}) -> Any:"]
-    lines.append(docstring(spec["description"]))
+    lines.append(docstring(spec["description"], documented))
     lines.append(f"        return {await_}self.call({call_args})")
     return "\n".join(lines)
 

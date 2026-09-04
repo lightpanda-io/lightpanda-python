@@ -12,6 +12,7 @@ class ProtocolError(LightpandaError):
     def __init__(self, message: str, code: int | None = None):
         super().__init__(message)
         self.code = code
+        """The JSON-RPC error code, when the server sent one."""
 
 
 class ToolError(LightpandaError):
@@ -24,5 +25,8 @@ class ScriptError(LightpandaError):
     def __init__(self, message: str, returncode: int, stdout: str = "", stderr: str = ""):
         super().__init__(message)
         self.returncode = returncode
+        """The process exit status, or ``-1`` when the script file does not exist."""
         self.stdout = stdout
+        """What the script wrote to stdout before failing."""
         self.stderr = stderr
+        """What the script wrote to stderr."""

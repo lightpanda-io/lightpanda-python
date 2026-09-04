@@ -71,13 +71,21 @@ class Session(SessionMethods):
 
     @property
     def id(self) -> str:
+        """The session id, as the browser knows it."""
         return self._id
 
     def call(self, tool: str, **kwargs):
         """Invoke a browser tool by name. The generated methods route here.
 
-        Returns parsed JSON for JSON-carrying tools, ``bytes`` for image
-        results (``screenshot`` without ``path``), otherwise the result text.
+        Accepts the tool and argument names as the browser declares them
+        (``waitForSelector``, ``backendNodeId``) as well as their snake_case
+        forms. Returns parsed JSON for JSON-carrying tools, ``bytes`` for
+        image results (``screenshot`` without ``path``), otherwise the result
+        text. Raises :class:`ToolError` when the tool reports a failure.
+
+        Args:
+            tool: The tool name.
+            **kwargs: The tool's arguments; ``None`` values are omitted.
         """
         if self._closed:
             raise ToolError(f"session {self._id} is closed")
@@ -124,6 +132,8 @@ class Session(SessionMethods):
         raise AttributeError(f"{type(self).__name__!r} object has no attribute {attr!r}")
 
     def close(self) -> None:
+        """Release the session's page. Idempotent; calls made after this
+        raise :class:`ToolError`. Closing the browser closes every session."""
         if not self._closed:
             self._closed = True
             self._client.delete_session(self._id)
@@ -151,8 +161,19 @@ class Browser:
         verbose: bool = False,
         args: Sequence[str] = (),
     ):
-        """``args`` are extra CLI flags for the spawned browser process
-        (e.g. ``["--http-cache-dir", path]`` or cookie flags)."""
+        """Spawn the browser process and fetch its tool list.
+
+        Args:
+            binary: Path to a lightpanda binary. When omitted, resolved from
+                the ``LIGHTPANDA_BIN`` environment variable, then the binary
+                bundled in the package, then ``PATH``.
+            env: Extra environment variables for the spawned process.
+            timeout: Seconds to wait for a response to any request before
+                raising :class:`ProtocolError`.
+            verbose: Let the browser's own logging through to stderr.
+            args: Extra CLI flags for the spawned browser process, e.g.
+                ``["--http-cache-dir", path]`` or cookie flags.
+        """
         self._client = Client(binary=binary, env=env, timeout=timeout, verbose=verbose, args=args)
         self._seq = itertools.count(1)
         listed = self._client.request("tools/list")
@@ -171,11 +192,14 @@ class Browser:
         return self._tools
 
     def new_session(self) -> Session:
+        """Open a new isolated browsing context: its own page, cookies and
+        memory. Close it with :meth:`Session.close` or a ``with`` block."""
         # itertools.count is atomic, so concurrent callers (the async facade's
         # worker threads) can't mint duplicate session ids.
         return Session(self, f"py{next(self._seq)}")
 
     def close(self) -> None:
+        """Stop the browser process, closing every session with it."""
         self._client.close()
 
     def __enter__(self):

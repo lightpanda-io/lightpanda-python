@@ -128,7 +128,7 @@ binary, with tool and parameter names in snake_case (`waitForSelector` →
 `wait_for_selector`, `backendNodeId` → `backend_node_id`). `Session.call` is
 the escape hatch that takes the raw tool and parameter names as the MCP
 server declares them. The full API reference is published at
-[lightpanda.io/docs/reference/python-api](https://lightpanda.io/docs/reference/python-api).
+[lightpanda.io/docs/reference/python](https://lightpanda.io/docs/reference/python).
 
 The bindings follow Lightpanda's development and the package version tracks
 browser releases — there is no backwards-compatibility guarantee: when the
@@ -211,7 +211,7 @@ an exact `==0.4.0` pin deliberately does not, so pin with `~=0.4.0` to
 receive them. The `workflow_dispatch` path has a matching `post` input.
 
 The API reference at
-[lightpanda.io/docs/reference/python-api](https://lightpanda.io/docs/reference/python-api)
+[lightpanda.io/docs/reference/python](https://lightpanda.io/docs/reference/python)
 is regenerated daily from this repository's `main` branch by the
 [docs repo's `python-reference` workflow](https://github.com/lightpanda-io/docs/blob/main/.github/workflows/python-reference.yml),
 so a merged docstring or signature change shows up there with no step on this

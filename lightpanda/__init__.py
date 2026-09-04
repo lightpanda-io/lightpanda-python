@@ -26,6 +26,8 @@ Chrome DevTools Protocol server and hands you the endpoint to connect to
 BiDi the same way and hands you the ``command_executor`` URL.
 """
 
+__docformat__ = "google"
+
 from .async_browser import AsyncBrowser, AsyncSession, run_script_async
 from .bidi import AsyncBiDiServer, BiDiServer
 from .browser import Browser, Session, run_script

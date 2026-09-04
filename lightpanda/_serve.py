@@ -31,15 +31,25 @@ class _ServeProcess:
         args: Sequence[str] = (),
         port: int | None = None,
     ):
-        """``port`` pins the listening port (default: a free one). ``args``
-        are extra ``lightpanda serve`` flags; pass ``port=`` rather than
-        ``--port``. ``verbose`` lets the browser log through to stderr."""
+        """Spawn the server process.
+
+        Args:
+            binary: Path to a lightpanda binary. When omitted, resolved from
+                the ``LIGHTPANDA_BIN`` environment variable, then the binary
+                bundled in the package, then ``PATH``.
+            env: Extra environment variables for the spawned process.
+            verbose: Let the browser's own logging through to stderr.
+            args: Extra ``lightpanda serve`` flags; pass ``port=`` rather
+                than ``--port``.
+            port: Pin the listening port. Defaults to a free one.
+        """
         self._proc, self._port = _spawn(
             find_binary(binary), "serve", [*self._protocol, *args], env, verbose, port=port
         )
 
     @property
     def port(self) -> int:
+        """The port the server listens on."""
         return self._port
 
     @property
@@ -62,6 +72,7 @@ class _ServeProcess:
             raise LightpandaError(f"GET {url} failed: {err}") from err
 
     def close(self) -> None:
+        """Stop the server process. Idempotent."""
         if self._proc is not None:
             _terminate(self._proc)
             self._proc = None
@@ -97,7 +108,15 @@ class _AsyncServeProcess(Generic[_S]):
         args: Sequence[str] = (),
         port: int | None = None,
     ):
-        """Arguments are forwarded to the sync class."""
+        """Prepare the facade; the process is spawned by :meth:`start`.
+
+        Args:
+            binary: Forwarded to the sync class.
+            env: Forwarded to the sync class.
+            verbose: Forwarded to the sync class.
+            args: Forwarded to the sync class.
+            port: Forwarded to the sync class.
+        """
         self._kwargs = dict(binary=binary, env=env, verbose=verbose, args=args, port=port)
         self._server: _S | None = None
         self._start_lock = asyncio.Lock()
@@ -116,6 +135,7 @@ class _AsyncServeProcess(Generic[_S]):
 
     @property
     def port(self) -> int:
+        """The port the server listens on."""
         return self._started().port
 
     @property
@@ -124,6 +144,7 @@ class _AsyncServeProcess(Generic[_S]):
         return self._started().http_endpoint
 
     async def close(self) -> None:
+        """Stop the server process. Idempotent."""
         if self._server is not None:
             server, self._server = self._server, None
             await asyncio.to_thread(server.close)

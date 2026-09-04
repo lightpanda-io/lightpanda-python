@@ -16,103 +16,252 @@ class SessionMethods:
         raise NotImplementedError
 
     def click(self, *, selector: str | None = None, backend_node_id: int | None = None) -> Any:
-        """Click on an interactive element. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Returns the current page URL and title after the click."""
+        """Click on an interactive element. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Returns the current page URL and title after the click.
+
+        Args:
+            selector: CSS selector of the element to click. Preferred over backendNodeId.
+            backend_node_id: The backend node ID of the element to click.
+        """
         return self.call("click", selector=selector, backend_node_id=backend_node_id)
     def console_logs(self) -> Any:
         """Get buffered console.log/warn/error messages from the current page. Returns all messages since last call and clears the buffer."""
         return self.call("consoleLogs")
     def detect_forms(self, *, url: str | None = None, timeout: int | None = None) -> Any:
-        """Detect all forms on the page and return their structure including fields, types, and required status. If a url is provided, it navigates to that url first."""
+        """Detect all forms on the page and return their structure including fields, types, and required status. If a url is provided, it navigates to that url first.
+
+        Args:
+            url: Optional URL to navigate to before processing.
+            timeout: Optional timeout in milliseconds. Defaults to 10000.
+        """
         return self.call("detectForms", url=url, timeout=timeout)
     def evaluate(self, *, script: str, url: str | None = None, timeout: int | None = None, save: str | None = None) -> Any:
-        """Evaluate JavaScript in the current page context — an escape hatch for page-side logic the dedicated tools can't express; prefer `extract` for data and click/fill/etc. for actions. It runs in the page, so it cannot see the agent script's variables or builtins — interpolate any value into the `script` string. A bare trailing expression yields its value; top-level `await` and `return` are supported (the body then runs as an async function, so use `return` to produce a value). Objects and arrays return as JSON, so no `JSON.stringify` is needed. If a url is provided, it navigates there first. The `globalThis.lp` object exposes a Session-scoped bridge store: values written via `lp.foo = ...` auto-sync at end of evaluate, surviving navigation; values previously set via `/extract save=` or `/evaluate save=` appear as `lp.<name>`."""
+        """Evaluate JavaScript in the current page context — an escape hatch for page-side logic the dedicated tools can't express; prefer `extract` for data and click/fill/etc. for actions. It runs in the page, so it cannot see the agent script's variables or builtins — interpolate any value into the `script` string. A bare trailing expression yields its value; top-level `await` and `return` are supported (the body then runs as an async function, so use `return` to produce a value). Objects and arrays return as JSON, so no `JSON.stringify` is needed. If a url is provided, it navigates there first. The `globalThis.lp` object exposes a Session-scoped bridge store: values written via `lp.foo = ...` auto-sync at end of evaluate, surviving navigation; values previously set via `/extract save=` or `/evaluate save=` appear as `lp.<name>`.
+
+        Args:
+            url: Optional URL to navigate to before evaluating.
+            timeout: Optional timeout in milliseconds. Defaults to 10000.
+            save: Optional bridge-store key. The evaluate's return value is stored under this name and re-exposed as `lp.<name>` to subsequent evaluates. Objects, arrays, and strings are serialized automatically — no JSON.stringify needed.
+        """
         return self.call("evaluate", script=script, url=url, timeout=timeout, save=save)
     def extract(self, *, schema: str | dict | list, save: str | None = None) -> Any:
         """Extract structured data from the current page (navigate first). `schema` is a JSON object (passed as a string) mapping output field names to CSS-selector specs. It is NOT a JSON Schema — no "type"/"properties" wrappers; the keys ARE your output fields. Value shapes:
-  "<sel>"                                → first match's text (trimmed; null if no match)
-  ["<sel>"]                              → every match's text (string[])
-  {"selector":"<sel>","attr":"<name>"}   → first match's attribute value (href/src resolved to absolute URLs)
-  [{"selector":"<sel>","attr":"<name>"}] → every match's attribute (string[])
-  [{"selector":"<sel>","fields":{…}}]    → one object per match; field selectors resolve relative to that match and accept any shape above ("" = the match's own text; nest arrays for per-item sub-lists)
-Add "limit": N inside any array's object spec to cap matches.
-Every extracted value is a string or null — parse numbers downstream. An empty array is a valid result, but if ALL top-level keys miss, the call errors: inspect the page (tree/markdown) and retry with corrected selectors.
-Finish data tasks with extract — it is the only read recorded as a replayable `extract(...)` script call; answers lifted from `markdown` text in chat are not.
+          "<sel>"                                → first match's text (trimmed; null if no match)
+          ["<sel>"]                              → every match's text (string[])
+          {"selector":"<sel>","attr":"<name>"}   → first match's attribute value (href/src resolved to absolute URLs)
+          [{"selector":"<sel>","attr":"<name>"}] → every match's attribute (string[])
+          [{"selector":"<sel>","fields":{…}}]    → one object per match; field selectors resolve relative to that match and accept any shape above ("" = the match's own text; nest arrays for per-item sub-lists)
+        Add "limit": N inside any array's object spec to cap matches.
+        Every extracted value is a string or null — parse numbers downstream. An empty array is a valid result, but if ALL top-level keys miss, the call errors: inspect the page (tree/markdown) and retry with corrected selectors.
+        Finish data tasks with extract — it is the only read recorded as a replayable `extract(...)` script call; answers lifted from `markdown` text in chat are not.
 
-Examples (schema → result):
-  {"karma": "#karma"} → {"karma":"42"}
-  {"items": [".story .title"]} → {"items":["Title 1","Title 2"]}
-  {"top3": [{"selector":".story .title","limit":3}]} → {"top3":["A","B","C"]}
-  {"links": [{"selector":"a.title","attr":"href"}]} → {"links":["https://site/a","https://site/b"]}
-  {"stories": [{"selector":".athing","fields":{"title":".titleline","rank":".rank"}}]} → {"stories":[{"title":"Foo","rank":"1"}]}"""
+        Examples (schema → result):
+          {"karma": "#karma"} → {"karma":"42"}
+          {"items": [".story .title"]} → {"items":["Title 1","Title 2"]}
+          {"top3": [{"selector":".story .title","limit":3}]} → {"top3":["A","B","C"]}
+          {"links": [{"selector":"a.title","attr":"href"}]} → {"links":["https://site/a","https://site/b"]}
+          {"stories": [{"selector":".athing","fields":{"title":".titleline","rank":".rank"}}]} → {"stories":[{"title":"Foo","rank":"1"}]}
+
+        Args:
+            schema: Extraction schema as a string: a JSON object literal mapping output field names to CSS-selector specs (see tool description). Not a JSON Schema.
+            save: Optional bridge-store key. The extracted JSON is stored under this name and exposed as `lp.<name>` in subsequent /evaluate calls.
+        """
         return self.call("extract", schema=schema, save=save)
     def fill(self, *, value: str, selector: str | None = None, backend_node_id: int | None = None) -> Any:
-        """Fill text into an input element. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId."""
+        """Fill text into an input element. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId.
+
+        Args:
+            value: The text to fill into the input element.
+            selector: CSS selector of the input element to fill. Preferred over backendNodeId.
+            backend_node_id: The backend node ID of the input element to fill.
+        """
         return self.call("fill", value=value, selector=selector, backend_node_id=backend_node_id)
     def find_element(self, *, role: str | None = None, name: str | None = None) -> Any:
-        """Find interactive elements by role and/or accessible name. Returns matching elements with their backend node IDs. Useful for locating specific elements without parsing the full semantic tree."""
+        """Find interactive elements by role and/or accessible name. Returns matching elements with their backend node IDs. Useful for locating specific elements without parsing the full semantic tree.
+
+        Args:
+            role: Optional ARIA role to match (e.g. 'button', 'link', 'textbox', 'checkbox').
+            name: Optional accessible name substring to match (case-insensitive).
+        """
         return self.call("findElement", role=role, name=name)
     def get_cookies(self, *, url: str | None = None, all: bool | None = None) -> Any:
-        """Cookies stored in the browser. Defaults to cookies whose domain matches the current page's host. Pass `url=<URL>` to filter for another host, or `all=true` to dump every cookie regardless of host. Useful for debugging authentication and session state."""
+        """Cookies stored in the browser. Defaults to cookies whose domain matches the current page's host. Pass `url=<URL>` to filter for another host, or `all=true` to dump every cookie regardless of host. Useful for debugging authentication and session state.
+
+        Args:
+            url: Restrict output to cookies matching this URL's host. Defaults to the current page.
+            all: If true, dump every cookie regardless of host. Overrides `url`.
+        """
         return self.call("getCookies", url=url, all=all)
     def get_env(self, *, name: str | None = None) -> Any:
-        """With `name`: read an LP_* env var (other namespaces report as not set) — for non-secret config only (base URLs, flags). Without `name`: list LP_* names that are set (no values) — safe credential discovery. For secrets, pass `$LP_*` placeholders in tool args; never request a credential by name (the value would land in your context)."""
+        """With `name`: read an LP_* env var (other namespaces report as not set) — for non-secret config only (base URLs, flags). Without `name`: list LP_* names that are set (no values) — safe credential discovery. For secrets, pass `$LP_*` placeholders in tool args; never request a credential by name (the value would land in your context).
+
+        Args:
+            name: Optional. If provided, must start with LP_; returns the value. If omitted, returns the list of LP_* names that are set.
+        """
         return self.call("getEnv", name=name)
     def get_url(self) -> Any:
         """Current page URL. The browser may already have a page loaded (command, replayed script) not visible in this conversation — call this before assuming nothing is loaded when the user references the current page/site. Also useful to verify a navigation or detect a redirect."""
         return self.call("getUrl")
     def goto(self, *, url: str, timeout: int | None = None, wait_until: str | None = None) -> Any:
-        """Navigate to a specified URL and load the page in memory so it can be reused later for info extraction."""
+        """Navigate to a specified URL and load the page in memory so it can be reused later for info extraction.
+
+        Args:
+            url: The URL to navigate to, must be a valid URL.
+            timeout: Optional timeout in milliseconds. Defaults to 10000.
+            wait_until: Event that completes the navigation. Defaults to 'load'. Prefer 'domcontentloaded' followed by waitForSelector on pages whose late scripts (ads) hold 'load' back. Avoid 'done' (full quiescence): on pages with constant background activity it is the slowest choice and can run to the timeout.
+        """
         return self.call("goto", url=url, timeout=timeout, wait_until=wait_until)
     def hover(self, *, selector: str | None = None, backend_node_id: int | None = None) -> Any:
-        """Hover over an element, triggering mouseover and mouseenter events. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Useful for menus, tooltips, and hover states."""
+        """Hover over an element, triggering mouseover and mouseenter events. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Useful for menus, tooltips, and hover states.
+
+        Args:
+            selector: CSS selector of the element to hover over. Preferred over backendNodeId.
+            backend_node_id: The backend node ID of the element to hover over.
+        """
         return self.call("hover", selector=selector, backend_node_id=backend_node_id)
     def html(self, *, selector: str | None = None, backend_node_id: int | None = None, max_bytes: int | None = None, strip: dict | None = None, url: str | None = None, timeout: int | None = None) -> Any:
-        """Raw HTML for the document or, with `selector`/`backendNodeId`, a single node's outerHTML. Verbose; use only when you need attributes that markdown discards."""
+        """Raw HTML for the document or, with `selector`/`backendNodeId`, a single node's outerHTML. Verbose; use only when you need attributes that markdown discards.
+
+        Args:
+            selector: Optional CSS selector. When set, dump only that element's outerHTML.
+            backend_node_id: Optional backend node ID. When set, dump only that node's outerHTML. 0 is treated as omitted.
+            max_bytes: Optional soft cap on output size in bytes. Content is truncated at a UTF-8 boundary and a short '[truncated]' marker is appended past the cap.
+            strip: Optional. Omit element groups from the output: `js` (script, noscript, script preloads), `css` (style, stylesheet links), `ui` (css plus img, picture, video, audio, svg, canvas, iframe), `invisible` (elements an author rule or inline style sets to display:none). {"js":true,"css":true} keeps a page dump small.
+            url: Optional URL to navigate to before dumping.
+            timeout: Optional timeout in milliseconds. Defaults to 10000.
+        """
         return self.call("html", selector=selector, backend_node_id=backend_node_id, max_bytes=max_bytes, strip=strip, url=url, timeout=timeout)
     def interactive_elements(self, *, url: str | None = None, timeout: int | None = None) -> Any:
-        """Extract interactive elements from the opened page. If a url is provided, it navigates to that url first."""
+        """Extract interactive elements from the opened page. If a url is provided, it navigates to that url first.
+
+        Args:
+            url: Optional URL to navigate to before processing.
+            timeout: Optional timeout in milliseconds. Defaults to 10000.
+        """
         return self.call("interactiveElements", url=url, timeout=timeout)
     def links(self, *, limit: int | None = None, url: str | None = None, timeout: int | None = None) -> Any:
-        """Extract the visible links in the opened page as JSON objects with `text` (anchor text, falling back to aria-label/title/image alt), `href` (resolved URL), and `backendNodeId` (pass to click/nodeDetails). One entry per href; hidden links are omitted. If a url is provided, it navigates to that url first."""
+        """Extract the visible links in the opened page as JSON objects with `text` (anchor text, falling back to aria-label/title/image alt), `href` (resolved URL), and `backendNodeId` (pass to click/nodeDetails). One entry per href; hidden links are omitted. If a url is provided, it navigates to that url first.
+
+        Args:
+            limit: Optional. Return at most this many links, in document order.
+            url: Optional URL to navigate to before processing.
+            timeout: Optional timeout in milliseconds. Defaults to 10000.
+        """
         return self.call("links", limit=limit, url=url, timeout=timeout)
     def markdown(self, *, selector: str | None = None, backend_node_id: int | None = None, max_bytes: int | None = None, url: str | None = None, timeout: int | None = None) -> Any:
-        """Render the page (or a subtree) as markdown. Scope with `selector` or `backendNodeId` to read just the relevant region — full-page markdown is the last resort. Use `maxBytes` to cap long pages."""
+        """Render the page (or a subtree) as markdown. Scope with `selector` or `backendNodeId` to read just the relevant region — full-page markdown is the last resort. Use `maxBytes` to cap long pages.
+
+        Args:
+            selector: Optional CSS selector. Render markdown for just that element's subtree.
+            backend_node_id: Optional backend node ID. Render markdown for just that node's subtree. 0 is treated as omitted.
+            max_bytes: Optional soft cap on output size in bytes. Content is truncated at a UTF-8 boundary and a short '[truncated]' marker is appended past the cap.
+            url: Optional URL to navigate to before rendering.
+            timeout: Optional timeout in milliseconds. Defaults to 10000.
+        """
         return self.call("markdown", selector=selector, backend_node_id=backend_node_id, max_bytes=max_bytes, url=url, timeout=timeout)
     def node_details(self, *, backend_node_id: int) -> Any:
-        """Details for a node by backendNodeId: a ready-to-use CSS `selector` that resolves to the node (the first match, as click/fill resolve it), plus tag, role, name, interactivity, disabled, value, input type, placeholder, href, id, class, checked, select options. The canonical way to turn a tree backendNodeId into a CSS selector."""
+        """Details for a node by backendNodeId: a ready-to-use CSS `selector` that resolves to the node (the first match, as click/fill resolve it), plus tag, role, name, interactivity, disabled, value, input type, placeholder, href, id, class, checked, select options. The canonical way to turn a tree backendNodeId into a CSS selector.
+
+        Args:
+            backend_node_id: The backend node ID of the element to inspect.
+        """
         return self.call("nodeDetails", backend_node_id=backend_node_id)
     def press(self, *, key: str, selector: str | None = None, backend_node_id: int | None = None) -> Any:
-        """Press a keyboard key, dispatching keydown and keyup events. Use key names like 'Enter', 'Tab', 'Escape', 'ArrowDown', 'Backspace', or single characters like 'a', '1'. Common shorthand is normalized: 'enter'/'return' → 'Enter', 'esc' → 'Escape', 'up'/'down'/'left'/'right' → 'Arrow*', 'space' → ' '. Pressing 'Enter' on a form input or submit button triggers implicit form submission."""
+        """Press a keyboard key, dispatching keydown and keyup events. Use key names like 'Enter', 'Tab', 'Escape', 'ArrowDown', 'Backspace', or single characters like 'a', '1'. Common shorthand is normalized: 'enter'/'return' → 'Enter', 'esc' → 'Escape', 'up'/'down'/'left'/'right' → 'Arrow*', 'space' → ' '. Pressing 'Enter' on a form input or submit button triggers implicit form submission.
+
+        Args:
+            key: The key to press (e.g. 'Enter', 'Tab', 'a').
+            selector: Optional CSS selector of the element to target. Preferred over backendNodeId.
+            backend_node_id: Optional backend node ID of the element to target. Defaults to the document when neither selector nor backendNodeId is provided; 0 is treated as omitted.
+        """
         return self.call("press", key=key, selector=selector, backend_node_id=backend_node_id)
     def screenshot(self, *, path: str | None = None, selector: str | None = None, backend_node_id: int | None = None, full_page: bool | None = None, url: str | None = None, timeout: int | None = None) -> Any:
-        """Render the page, or one node, as a PNG: the text layout Lightpanda computes, not a pixel-accurate browser rendering (no images, fonts or CSS colours). With `path`, writes the file at full size and returns its location; without it, returns the image inline where the client can display one, at most 1280px wide and 4096px tall. Use it to see spatial layout; read content with `markdown`/`tree`."""
+        """Render the page, or one node, as a PNG: the text layout Lightpanda computes, not a pixel-accurate browser rendering (no images, fonts or CSS colours). With `path`, writes the file at full size and returns its location; without it, returns the image inline where the client can display one, at most 1280px wide and 4096px tall. Use it to see spatial layout; read content with `markdown`/`tree`.
+
+        Args:
+            path: Optional relative path (no '..' segments) to write the PNG to. Created or overwritten. Without it the image is returned inline, which needs a client that can display images.
+            selector: Optional CSS selector. When set, render only that element.
+            backend_node_id: Optional backend node ID. When set, render only that node. 0 is treated as omitted.
+            full_page: Render the whole content height instead of one viewport. Defaults to false.
+            url: Optional URL to navigate to before rendering.
+            timeout: Optional timeout in milliseconds. Defaults to 10000.
+        """
         return self.call("screenshot", path=path, selector=selector, backend_node_id=backend_node_id, full_page=full_page, url=url, timeout=timeout)
     def scroll(self, *, backend_node_id: int | None = None, x: int | None = None, y: int | None = None) -> Any:
-        """Scroll the page or a specific element. Returns the scroll position and current page URL and title."""
+        """Scroll the page or a specific element. Returns the scroll position and current page URL and title.
+
+        Args:
+            backend_node_id: Optional: The backend node ID of the element to scroll. If omitted (or 0), scrolls the window.
+            x: Optional: The horizontal scroll offset.
+            y: Optional: The vertical scroll offset.
+        """
         return self.call("scroll", backend_node_id=backend_node_id, x=x, y=y)
     def search(self, *, query: str, timeout: int | None = None) -> Any:
-        """Run a web search and return results as markdown: a numbered list of {title, url, snippet}. Search tries brave, tavily, exa, then keenable in order, each when its API key (BRAVE_API_KEY, TAVILY_API_KEY, EXA_API_KEY or KEENABLE_API_KEY) is set; keenable also works without a key through its public endpoint (rate-limited per client IP). Prefer this over goto-ing google.com/search directly (Google blocks the browser on User-Agent/TLS). The browser does not navigate — to open a result, use `goto` with its URL."""
+        """Run a web search and return results as markdown: a numbered list of {title, url, snippet}. Search tries brave, tavily, exa, then keenable in order, each when its API key (BRAVE_API_KEY, TAVILY_API_KEY, EXA_API_KEY or KEENABLE_API_KEY) is set; keenable also works without a key through its public endpoint (rate-limited per client IP). Prefer this over goto-ing google.com/search directly (Google blocks the browser on User-Agent/TLS). The browser does not navigate — to open a result, use `goto` with its URL.
+
+        Args:
+            query: The search query.
+            timeout: Optional timeout in milliseconds. Defaults to 10000.
+        """
         return self.call("search", query=query, timeout=timeout)
     def select_option(self, *, value: str, selector: str | None = None, backend_node_id: int | None = None) -> Any:
-        """Select an option in a <select> dropdown element by its value. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Dispatches input and change events."""
+        """Select an option in a <select> dropdown element by its value. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Dispatches input and change events.
+
+        Args:
+            value: The value of the option to select.
+            selector: CSS selector of the <select> element. Preferred over backendNodeId.
+            backend_node_id: The backend node ID of the <select> element.
+        """
         return self.call("selectOption", value=value, selector=selector, backend_node_id=backend_node_id)
     def set_checked(self, *, checked: bool, selector: str | None = None, backend_node_id: int | None = None) -> Any:
-        """Check or uncheck a checkbox or radio button. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Dispatches input, change, and click events."""
+        """Check or uncheck a checkbox or radio button. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Dispatches input, change, and click events.
+
+        Args:
+            checked: Whether to check (true) or uncheck (false) the element.
+            selector: CSS selector of the checkbox or radio input element. Preferred over backendNodeId.
+            backend_node_id: The backend node ID of the checkbox or radio input element.
+        """
         return self.call("setChecked", checked=checked, selector=selector, backend_node_id=backend_node_id)
     def structured_data(self, *, url: str | None = None, timeout: int | None = None) -> Any:
-        """Extract structured data (like JSON-LD, OpenGraph, etc) from the opened page. If a url is provided, it navigates to that url first."""
+        """Extract structured data (like JSON-LD, OpenGraph, etc) from the opened page. If a url is provided, it navigates to that url first.
+
+        Args:
+            url: Optional URL to navigate to before processing.
+            timeout: Optional timeout in milliseconds. Defaults to 10000.
+        """
         return self.call("structuredData", url=url, timeout=timeout)
     def tree(self, *, url: str | None = None, timeout: int | None = None, backend_node_id: int | None = None, max_depth: int | None = None) -> Any:
-        """Simplified semantic DOM tree (role, name, value, backendNodeId per node). Pass `backendNodeId` to scope, `maxDepth` to limit depth."""
+        """Simplified semantic DOM tree (role, name, value, backendNodeId per node). Pass `backendNodeId` to scope, `maxDepth` to limit depth.
+
+        Args:
+            url: Optional URL to navigate to before fetching the semantic tree.
+            timeout: Optional timeout in milliseconds. Defaults to 10000.
+            backend_node_id: Optional backend node ID to get the tree for a specific element instead of the document root. 0 is treated as omitted.
+            max_depth: Optional maximum depth of the tree to return. Useful for exploring high-level structure first.
+        """
         return self.call("tree", url=url, timeout=timeout, backend_node_id=backend_node_id, max_depth=max_depth)
     def wait_for_script(self, *, script: str, timeout: int | None = None) -> Any:
-        """Wait until a JS expression returns truthy. Re-evaluates on each tick of the event loop. Use for synchronization beyond what CSS selectors can express — e.g. `window.dataLoaded === true`, `document.readyState === 'complete'`, `document.querySelectorAll('.row').length >= 5`."""
+        """Wait until a JS expression returns truthy. Re-evaluates on each tick of the event loop. Use for synchronization beyond what CSS selectors can express — e.g. `window.dataLoaded === true`, `document.readyState === 'complete'`, `document.querySelectorAll('.row').length >= 5`.
+
+        Args:
+            script: JS expression evaluated each tick until truthy. Must be an expression (not a statement).
+            timeout: Optional timeout in milliseconds. Defaults to 5000, or 15000 when the page has not reached 'load' yet.
+        """
         return self.call("waitForScript", script=script, timeout=timeout)
     def wait_for_selector(self, *, selector: str, timeout: int | None = None) -> Any:
-        """Wait for an element matching a CSS selector to appear in the page. Returns the backend node ID of the matched element."""
+        """Wait for an element matching a CSS selector to appear in the page. Returns the backend node ID of the matched element.
+
+        Args:
+            selector: The CSS selector to wait for.
+            timeout: Optional timeout in milliseconds. Defaults to 5000, or 15000 when the page has not reached 'load' yet.
+        """
         return self.call("waitForSelector", selector=selector, timeout=timeout)
     def wait_for_state(self, *, state: str, timeout: int | None = None) -> Any:
-        """Wait for the CURRENT page to reach a load state (no navigation). After a `goto`, the page is returned at the fast `load` snapshot, so content rendered by post-load JS (XHR-loaded lists, feeds, search results) may still be missing. When a read looks incomplete — empty lists, spinners, skeletons — call this with 'networkidle' and re-read. Prefer 'networkidle'; 'done' can be slow on sites with constant background activity (ads, polling)."""
+        """Wait for the CURRENT page to reach a load state (no navigation). After a `goto`, the page is returned at the fast `load` snapshot, so content rendered by post-load JS (XHR-loaded lists, feeds, search results) may still be missing. When a read looks incomplete — empty lists, spinners, skeletons — call this with 'networkidle' and re-read. Prefer 'networkidle'; 'done' can be slow on sites with constant background activity (ads, polling).
+
+        Args:
+            state: Load state to wait for. 'networkidle' = network settled (the usual choice to finish a dynamic page).
+            timeout: Optional timeout in milliseconds. Defaults to 5000.
+        """
         return self.call("waitForState", state=state, timeout=timeout)
 
 class AsyncSessionMethods:
@@ -120,101 +269,250 @@ class AsyncSessionMethods:
         raise NotImplementedError
 
     async def click(self, *, selector: str | None = None, backend_node_id: int | None = None) -> Any:
-        """Click on an interactive element. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Returns the current page URL and title after the click."""
+        """Click on an interactive element. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Returns the current page URL and title after the click.
+
+        Args:
+            selector: CSS selector of the element to click. Preferred over backendNodeId.
+            backend_node_id: The backend node ID of the element to click.
+        """
         return await self.call("click", selector=selector, backend_node_id=backend_node_id)
     async def console_logs(self) -> Any:
         """Get buffered console.log/warn/error messages from the current page. Returns all messages since last call and clears the buffer."""
         return await self.call("consoleLogs")
     async def detect_forms(self, *, url: str | None = None, timeout: int | None = None) -> Any:
-        """Detect all forms on the page and return their structure including fields, types, and required status. If a url is provided, it navigates to that url first."""
+        """Detect all forms on the page and return their structure including fields, types, and required status. If a url is provided, it navigates to that url first.
+
+        Args:
+            url: Optional URL to navigate to before processing.
+            timeout: Optional timeout in milliseconds. Defaults to 10000.
+        """
         return await self.call("detectForms", url=url, timeout=timeout)
     async def evaluate(self, *, script: str, url: str | None = None, timeout: int | None = None, save: str | None = None) -> Any:
-        """Evaluate JavaScript in the current page context — an escape hatch for page-side logic the dedicated tools can't express; prefer `extract` for data and click/fill/etc. for actions. It runs in the page, so it cannot see the agent script's variables or builtins — interpolate any value into the `script` string. A bare trailing expression yields its value; top-level `await` and `return` are supported (the body then runs as an async function, so use `return` to produce a value). Objects and arrays return as JSON, so no `JSON.stringify` is needed. If a url is provided, it navigates there first. The `globalThis.lp` object exposes a Session-scoped bridge store: values written via `lp.foo = ...` auto-sync at end of evaluate, surviving navigation; values previously set via `/extract save=` or `/evaluate save=` appear as `lp.<name>`."""
+        """Evaluate JavaScript in the current page context — an escape hatch for page-side logic the dedicated tools can't express; prefer `extract` for data and click/fill/etc. for actions. It runs in the page, so it cannot see the agent script's variables or builtins — interpolate any value into the `script` string. A bare trailing expression yields its value; top-level `await` and `return` are supported (the body then runs as an async function, so use `return` to produce a value). Objects and arrays return as JSON, so no `JSON.stringify` is needed. If a url is provided, it navigates there first. The `globalThis.lp` object exposes a Session-scoped bridge store: values written via `lp.foo = ...` auto-sync at end of evaluate, surviving navigation; values previously set via `/extract save=` or `/evaluate save=` appear as `lp.<name>`.
+
+        Args:
+            url: Optional URL to navigate to before evaluating.
+            timeout: Optional timeout in milliseconds. Defaults to 10000.
+            save: Optional bridge-store key. The evaluate's return value is stored under this name and re-exposed as `lp.<name>` to subsequent evaluates. Objects, arrays, and strings are serialized automatically — no JSON.stringify needed.
+        """
         return await self.call("evaluate", script=script, url=url, timeout=timeout, save=save)
     async def extract(self, *, schema: str | dict | list, save: str | None = None) -> Any:
         """Extract structured data from the current page (navigate first). `schema` is a JSON object (passed as a string) mapping output field names to CSS-selector specs. It is NOT a JSON Schema — no "type"/"properties" wrappers; the keys ARE your output fields. Value shapes:
-  "<sel>"                                → first match's text (trimmed; null if no match)
-  ["<sel>"]                              → every match's text (string[])
-  {"selector":"<sel>","attr":"<name>"}   → first match's attribute value (href/src resolved to absolute URLs)
-  [{"selector":"<sel>","attr":"<name>"}] → every match's attribute (string[])
-  [{"selector":"<sel>","fields":{…}}]    → one object per match; field selectors resolve relative to that match and accept any shape above ("" = the match's own text; nest arrays for per-item sub-lists)
-Add "limit": N inside any array's object spec to cap matches.
-Every extracted value is a string or null — parse numbers downstream. An empty array is a valid result, but if ALL top-level keys miss, the call errors: inspect the page (tree/markdown) and retry with corrected selectors.
-Finish data tasks with extract — it is the only read recorded as a replayable `extract(...)` script call; answers lifted from `markdown` text in chat are not.
+          "<sel>"                                → first match's text (trimmed; null if no match)
+          ["<sel>"]                              → every match's text (string[])
+          {"selector":"<sel>","attr":"<name>"}   → first match's attribute value (href/src resolved to absolute URLs)
+          [{"selector":"<sel>","attr":"<name>"}] → every match's attribute (string[])
+          [{"selector":"<sel>","fields":{…}}]    → one object per match; field selectors resolve relative to that match and accept any shape above ("" = the match's own text; nest arrays for per-item sub-lists)
+        Add "limit": N inside any array's object spec to cap matches.
+        Every extracted value is a string or null — parse numbers downstream. An empty array is a valid result, but if ALL top-level keys miss, the call errors: inspect the page (tree/markdown) and retry with corrected selectors.
+        Finish data tasks with extract — it is the only read recorded as a replayable `extract(...)` script call; answers lifted from `markdown` text in chat are not.
 
-Examples (schema → result):
-  {"karma": "#karma"} → {"karma":"42"}
-  {"items": [".story .title"]} → {"items":["Title 1","Title 2"]}
-  {"top3": [{"selector":".story .title","limit":3}]} → {"top3":["A","B","C"]}
-  {"links": [{"selector":"a.title","attr":"href"}]} → {"links":["https://site/a","https://site/b"]}
-  {"stories": [{"selector":".athing","fields":{"title":".titleline","rank":".rank"}}]} → {"stories":[{"title":"Foo","rank":"1"}]}"""
+        Examples (schema → result):
+          {"karma": "#karma"} → {"karma":"42"}
+          {"items": [".story .title"]} → {"items":["Title 1","Title 2"]}
+          {"top3": [{"selector":".story .title","limit":3}]} → {"top3":["A","B","C"]}
+          {"links": [{"selector":"a.title","attr":"href"}]} → {"links":["https://site/a","https://site/b"]}
+          {"stories": [{"selector":".athing","fields":{"title":".titleline","rank":".rank"}}]} → {"stories":[{"title":"Foo","rank":"1"}]}
+
+        Args:
+            schema: Extraction schema as a string: a JSON object literal mapping output field names to CSS-selector specs (see tool description). Not a JSON Schema.
+            save: Optional bridge-store key. The extracted JSON is stored under this name and exposed as `lp.<name>` in subsequent /evaluate calls.
+        """
         return await self.call("extract", schema=schema, save=save)
     async def fill(self, *, value: str, selector: str | None = None, backend_node_id: int | None = None) -> Any:
-        """Fill text into an input element. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId."""
+        """Fill text into an input element. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId.
+
+        Args:
+            value: The text to fill into the input element.
+            selector: CSS selector of the input element to fill. Preferred over backendNodeId.
+            backend_node_id: The backend node ID of the input element to fill.
+        """
         return await self.call("fill", value=value, selector=selector, backend_node_id=backend_node_id)
     async def find_element(self, *, role: str | None = None, name: str | None = None) -> Any:
-        """Find interactive elements by role and/or accessible name. Returns matching elements with their backend node IDs. Useful for locating specific elements without parsing the full semantic tree."""
+        """Find interactive elements by role and/or accessible name. Returns matching elements with their backend node IDs. Useful for locating specific elements without parsing the full semantic tree.
+
+        Args:
+            role: Optional ARIA role to match (e.g. 'button', 'link', 'textbox', 'checkbox').
+            name: Optional accessible name substring to match (case-insensitive).
+        """
         return await self.call("findElement", role=role, name=name)
     async def get_cookies(self, *, url: str | None = None, all: bool | None = None) -> Any:
-        """Cookies stored in the browser. Defaults to cookies whose domain matches the current page's host. Pass `url=<URL>` to filter for another host, or `all=true` to dump every cookie regardless of host. Useful for debugging authentication and session state."""
+        """Cookies stored in the browser. Defaults to cookies whose domain matches the current page's host. Pass `url=<URL>` to filter for another host, or `all=true` to dump every cookie regardless of host. Useful for debugging authentication and session state.
+
+        Args:
+            url: Restrict output to cookies matching this URL's host. Defaults to the current page.
+            all: If true, dump every cookie regardless of host. Overrides `url`.
+        """
         return await self.call("getCookies", url=url, all=all)
     async def get_env(self, *, name: str | None = None) -> Any:
-        """With `name`: read an LP_* env var (other namespaces report as not set) — for non-secret config only (base URLs, flags). Without `name`: list LP_* names that are set (no values) — safe credential discovery. For secrets, pass `$LP_*` placeholders in tool args; never request a credential by name (the value would land in your context)."""
+        """With `name`: read an LP_* env var (other namespaces report as not set) — for non-secret config only (base URLs, flags). Without `name`: list LP_* names that are set (no values) — safe credential discovery. For secrets, pass `$LP_*` placeholders in tool args; never request a credential by name (the value would land in your context).
+
+        Args:
+            name: Optional. If provided, must start with LP_; returns the value. If omitted, returns the list of LP_* names that are set.
+        """
         return await self.call("getEnv", name=name)
     async def get_url(self) -> Any:
         """Current page URL. The browser may already have a page loaded (command, replayed script) not visible in this conversation — call this before assuming nothing is loaded when the user references the current page/site. Also useful to verify a navigation or detect a redirect."""
         return await self.call("getUrl")
     async def goto(self, *, url: str, timeout: int | None = None, wait_until: str | None = None) -> Any:
-        """Navigate to a specified URL and load the page in memory so it can be reused later for info extraction."""
+        """Navigate to a specified URL and load the page in memory so it can be reused later for info extraction.
+
+        Args:
+            url: The URL to navigate to, must be a valid URL.
+            timeout: Optional timeout in milliseconds. Defaults to 10000.
+            wait_until: Event that completes the navigation. Defaults to 'load'. Prefer 'domcontentloaded' followed by waitForSelector on pages whose late scripts (ads) hold 'load' back. Avoid 'done' (full quiescence): on pages with constant background activity it is the slowest choice and can run to the timeout.
+        """
         return await self.call("goto", url=url, timeout=timeout, wait_until=wait_until)
     async def hover(self, *, selector: str | None = None, backend_node_id: int | None = None) -> Any:
-        """Hover over an element, triggering mouseover and mouseenter events. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Useful for menus, tooltips, and hover states."""
+        """Hover over an element, triggering mouseover and mouseenter events. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Useful for menus, tooltips, and hover states.
+
+        Args:
+            selector: CSS selector of the element to hover over. Preferred over backendNodeId.
+            backend_node_id: The backend node ID of the element to hover over.
+        """
         return await self.call("hover", selector=selector, backend_node_id=backend_node_id)
     async def html(self, *, selector: str | None = None, backend_node_id: int | None = None, max_bytes: int | None = None, strip: dict | None = None, url: str | None = None, timeout: int | None = None) -> Any:
-        """Raw HTML for the document or, with `selector`/`backendNodeId`, a single node's outerHTML. Verbose; use only when you need attributes that markdown discards."""
+        """Raw HTML for the document or, with `selector`/`backendNodeId`, a single node's outerHTML. Verbose; use only when you need attributes that markdown discards.
+
+        Args:
+            selector: Optional CSS selector. When set, dump only that element's outerHTML.
+            backend_node_id: Optional backend node ID. When set, dump only that node's outerHTML. 0 is treated as omitted.
+            max_bytes: Optional soft cap on output size in bytes. Content is truncated at a UTF-8 boundary and a short '[truncated]' marker is appended past the cap.
+            strip: Optional. Omit element groups from the output: `js` (script, noscript, script preloads), `css` (style, stylesheet links), `ui` (css plus img, picture, video, audio, svg, canvas, iframe), `invisible` (elements an author rule or inline style sets to display:none). {"js":true,"css":true} keeps a page dump small.
+            url: Optional URL to navigate to before dumping.
+            timeout: Optional timeout in milliseconds. Defaults to 10000.
+        """
         return await self.call("html", selector=selector, backend_node_id=backend_node_id, max_bytes=max_bytes, strip=strip, url=url, timeout=timeout)
     async def interactive_elements(self, *, url: str | None = None, timeout: int | None = None) -> Any:
-        """Extract interactive elements from the opened page. If a url is provided, it navigates to that url first."""
+        """Extract interactive elements from the opened page. If a url is provided, it navigates to that url first.
+
+        Args:
+            url: Optional URL to navigate to before processing.
+            timeout: Optional timeout in milliseconds. Defaults to 10000.
+        """
         return await self.call("interactiveElements", url=url, timeout=timeout)
     async def links(self, *, limit: int | None = None, url: str | None = None, timeout: int | None = None) -> Any:
-        """Extract the visible links in the opened page as JSON objects with `text` (anchor text, falling back to aria-label/title/image alt), `href` (resolved URL), and `backendNodeId` (pass to click/nodeDetails). One entry per href; hidden links are omitted. If a url is provided, it navigates to that url first."""
+        """Extract the visible links in the opened page as JSON objects with `text` (anchor text, falling back to aria-label/title/image alt), `href` (resolved URL), and `backendNodeId` (pass to click/nodeDetails). One entry per href; hidden links are omitted. If a url is provided, it navigates to that url first.
+
+        Args:
+            limit: Optional. Return at most this many links, in document order.
+            url: Optional URL to navigate to before processing.
+            timeout: Optional timeout in milliseconds. Defaults to 10000.
+        """
         return await self.call("links", limit=limit, url=url, timeout=timeout)
     async def markdown(self, *, selector: str | None = None, backend_node_id: int | None = None, max_bytes: int | None = None, url: str | None = None, timeout: int | None = None) -> Any:
-        """Render the page (or a subtree) as markdown. Scope with `selector` or `backendNodeId` to read just the relevant region — full-page markdown is the last resort. Use `maxBytes` to cap long pages."""
+        """Render the page (or a subtree) as markdown. Scope with `selector` or `backendNodeId` to read just the relevant region — full-page markdown is the last resort. Use `maxBytes` to cap long pages.
+
+        Args:
+            selector: Optional CSS selector. Render markdown for just that element's subtree.
+            backend_node_id: Optional backend node ID. Render markdown for just that node's subtree. 0 is treated as omitted.
+            max_bytes: Optional soft cap on output size in bytes. Content is truncated at a UTF-8 boundary and a short '[truncated]' marker is appended past the cap.
+            url: Optional URL to navigate to before rendering.
+            timeout: Optional timeout in milliseconds. Defaults to 10000.
+        """
         return await self.call("markdown", selector=selector, backend_node_id=backend_node_id, max_bytes=max_bytes, url=url, timeout=timeout)
     async def node_details(self, *, backend_node_id: int) -> Any:
-        """Details for a node by backendNodeId: a ready-to-use CSS `selector` that resolves to the node (the first match, as click/fill resolve it), plus tag, role, name, interactivity, disabled, value, input type, placeholder, href, id, class, checked, select options. The canonical way to turn a tree backendNodeId into a CSS selector."""
+        """Details for a node by backendNodeId: a ready-to-use CSS `selector` that resolves to the node (the first match, as click/fill resolve it), plus tag, role, name, interactivity, disabled, value, input type, placeholder, href, id, class, checked, select options. The canonical way to turn a tree backendNodeId into a CSS selector.
+
+        Args:
+            backend_node_id: The backend node ID of the element to inspect.
+        """
         return await self.call("nodeDetails", backend_node_id=backend_node_id)
     async def press(self, *, key: str, selector: str | None = None, backend_node_id: int | None = None) -> Any:
-        """Press a keyboard key, dispatching keydown and keyup events. Use key names like 'Enter', 'Tab', 'Escape', 'ArrowDown', 'Backspace', or single characters like 'a', '1'. Common shorthand is normalized: 'enter'/'return' → 'Enter', 'esc' → 'Escape', 'up'/'down'/'left'/'right' → 'Arrow*', 'space' → ' '. Pressing 'Enter' on a form input or submit button triggers implicit form submission."""
+        """Press a keyboard key, dispatching keydown and keyup events. Use key names like 'Enter', 'Tab', 'Escape', 'ArrowDown', 'Backspace', or single characters like 'a', '1'. Common shorthand is normalized: 'enter'/'return' → 'Enter', 'esc' → 'Escape', 'up'/'down'/'left'/'right' → 'Arrow*', 'space' → ' '. Pressing 'Enter' on a form input or submit button triggers implicit form submission.
+
+        Args:
+            key: The key to press (e.g. 'Enter', 'Tab', 'a').
+            selector: Optional CSS selector of the element to target. Preferred over backendNodeId.
+            backend_node_id: Optional backend node ID of the element to target. Defaults to the document when neither selector nor backendNodeId is provided; 0 is treated as omitted.
+        """
         return await self.call("press", key=key, selector=selector, backend_node_id=backend_node_id)
     async def screenshot(self, *, path: str | None = None, selector: str | None = None, backend_node_id: int | None = None, full_page: bool | None = None, url: str | None = None, timeout: int | None = None) -> Any:
-        """Render the page, or one node, as a PNG: the text layout Lightpanda computes, not a pixel-accurate browser rendering (no images, fonts or CSS colours). With `path`, writes the file at full size and returns its location; without it, returns the image inline where the client can display one, at most 1280px wide and 4096px tall. Use it to see spatial layout; read content with `markdown`/`tree`."""
+        """Render the page, or one node, as a PNG: the text layout Lightpanda computes, not a pixel-accurate browser rendering (no images, fonts or CSS colours). With `path`, writes the file at full size and returns its location; without it, returns the image inline where the client can display one, at most 1280px wide and 4096px tall. Use it to see spatial layout; read content with `markdown`/`tree`.
+
+        Args:
+            path: Optional relative path (no '..' segments) to write the PNG to. Created or overwritten. Without it the image is returned inline, which needs a client that can display images.
+            selector: Optional CSS selector. When set, render only that element.
+            backend_node_id: Optional backend node ID. When set, render only that node. 0 is treated as omitted.
+            full_page: Render the whole content height instead of one viewport. Defaults to false.
+            url: Optional URL to navigate to before rendering.
+            timeout: Optional timeout in milliseconds. Defaults to 10000.
+        """
         return await self.call("screenshot", path=path, selector=selector, backend_node_id=backend_node_id, full_page=full_page, url=url, timeout=timeout)
     async def scroll(self, *, backend_node_id: int | None = None, x: int | None = None, y: int | None = None) -> Any:
-        """Scroll the page or a specific element. Returns the scroll position and current page URL and title."""
+        """Scroll the page or a specific element. Returns the scroll position and current page URL and title.
+
+        Args:
+            backend_node_id: Optional: The backend node ID of the element to scroll. If omitted (or 0), scrolls the window.
+            x: Optional: The horizontal scroll offset.
+            y: Optional: The vertical scroll offset.
+        """
         return await self.call("scroll", backend_node_id=backend_node_id, x=x, y=y)
     async def search(self, *, query: str, timeout: int | None = None) -> Any:
-        """Run a web search and return results as markdown: a numbered list of {title, url, snippet}. Search tries brave, tavily, exa, then keenable in order, each when its API key (BRAVE_API_KEY, TAVILY_API_KEY, EXA_API_KEY or KEENABLE_API_KEY) is set; keenable also works without a key through its public endpoint (rate-limited per client IP). Prefer this over goto-ing google.com/search directly (Google blocks the browser on User-Agent/TLS). The browser does not navigate — to open a result, use `goto` with its URL."""
+        """Run a web search and return results as markdown: a numbered list of {title, url, snippet}. Search tries brave, tavily, exa, then keenable in order, each when its API key (BRAVE_API_KEY, TAVILY_API_KEY, EXA_API_KEY or KEENABLE_API_KEY) is set; keenable also works without a key through its public endpoint (rate-limited per client IP). Prefer this over goto-ing google.com/search directly (Google blocks the browser on User-Agent/TLS). The browser does not navigate — to open a result, use `goto` with its URL.
+
+        Args:
+            query: The search query.
+            timeout: Optional timeout in milliseconds. Defaults to 10000.
+        """
         return await self.call("search", query=query, timeout=timeout)
     async def select_option(self, *, value: str, selector: str | None = None, backend_node_id: int | None = None) -> Any:
-        """Select an option in a <select> dropdown element by its value. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Dispatches input and change events."""
+        """Select an option in a <select> dropdown element by its value. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Dispatches input and change events.
+
+        Args:
+            value: The value of the option to select.
+            selector: CSS selector of the <select> element. Preferred over backendNodeId.
+            backend_node_id: The backend node ID of the <select> element.
+        """
         return await self.call("selectOption", value=value, selector=selector, backend_node_id=backend_node_id)
     async def set_checked(self, *, checked: bool, selector: str | None = None, backend_node_id: int | None = None) -> Any:
-        """Check or uncheck a checkbox or radio button. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Dispatches input, change, and click events."""
+        """Check or uncheck a checkbox or radio button. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Dispatches input, change, and click events.
+
+        Args:
+            checked: Whether to check (true) or uncheck (false) the element.
+            selector: CSS selector of the checkbox or radio input element. Preferred over backendNodeId.
+            backend_node_id: The backend node ID of the checkbox or radio input element.
+        """
         return await self.call("setChecked", checked=checked, selector=selector, backend_node_id=backend_node_id)
     async def structured_data(self, *, url: str | None = None, timeout: int | None = None) -> Any:
-        """Extract structured data (like JSON-LD, OpenGraph, etc) from the opened page. If a url is provided, it navigates to that url first."""
+        """Extract structured data (like JSON-LD, OpenGraph, etc) from the opened page. If a url is provided, it navigates to that url first.
+
+        Args:
+            url: Optional URL to navigate to before processing.
+            timeout: Optional timeout in milliseconds. Defaults to 10000.
+        """
         return await self.call("structuredData", url=url, timeout=timeout)
     async def tree(self, *, url: str | None = None, timeout: int | None = None, backend_node_id: int | None = None, max_depth: int | None = None) -> Any:
-        """Simplified semantic DOM tree (role, name, value, backendNodeId per node). Pass `backendNodeId` to scope, `maxDepth` to limit depth."""
+        """Simplified semantic DOM tree (role, name, value, backendNodeId per node). Pass `backendNodeId` to scope, `maxDepth` to limit depth.
+
+        Args:
+            url: Optional URL to navigate to before fetching the semantic tree.
+            timeout: Optional timeout in milliseconds. Defaults to 10000.
+            backend_node_id: Optional backend node ID to get the tree for a specific element instead of the document root. 0 is treated as omitted.
+            max_depth: Optional maximum depth of the tree to return. Useful for exploring high-level structure first.
+        """
         return await self.call("tree", url=url, timeout=timeout, backend_node_id=backend_node_id, max_depth=max_depth)
     async def wait_for_script(self, *, script: str, timeout: int | None = None) -> Any:
-        """Wait until a JS expression returns truthy. Re-evaluates on each tick of the event loop. Use for synchronization beyond what CSS selectors can express — e.g. `window.dataLoaded === true`, `document.readyState === 'complete'`, `document.querySelectorAll('.row').length >= 5`."""
+        """Wait until a JS expression returns truthy. Re-evaluates on each tick of the event loop. Use for synchronization beyond what CSS selectors can express — e.g. `window.dataLoaded === true`, `document.readyState === 'complete'`, `document.querySelectorAll('.row').length >= 5`.
+
+        Args:
+            script: JS expression evaluated each tick until truthy. Must be an expression (not a statement).
+            timeout: Optional timeout in milliseconds. Defaults to 5000, or 15000 when the page has not reached 'load' yet.
+        """
         return await self.call("waitForScript", script=script, timeout=timeout)
     async def wait_for_selector(self, *, selector: str, timeout: int | None = None) -> Any:
-        """Wait for an element matching a CSS selector to appear in the page. Returns the backend node ID of the matched element."""
+        """Wait for an element matching a CSS selector to appear in the page. Returns the backend node ID of the matched element.
+
+        Args:
+            selector: The CSS selector to wait for.
+            timeout: Optional timeout in milliseconds. Defaults to 5000, or 15000 when the page has not reached 'load' yet.
+        """
         return await self.call("waitForSelector", selector=selector, timeout=timeout)
     async def wait_for_state(self, *, state: str, timeout: int | None = None) -> Any:
-        """Wait for the CURRENT page to reach a load state (no navigation). After a `goto`, the page is returned at the fast `load` snapshot, so content rendered by post-load JS (XHR-loaded lists, feeds, search results) may still be missing. When a read looks incomplete — empty lists, spinners, skeletons — call this with 'networkidle' and re-read. Prefer 'networkidle'; 'done' can be slow on sites with constant background activity (ads, polling)."""
+        """Wait for the CURRENT page to reach a load state (no navigation). After a `goto`, the page is returned at the fast `load` snapshot, so content rendered by post-load JS (XHR-loaded lists, feeds, search results) may still be missing. When a read looks incomplete — empty lists, spinners, skeletons — call this with 'networkidle' and re-read. Prefer 'networkidle'; 'done' can be slow on sites with constant background activity (ads, polling).
+
+        Args:
+            state: Load state to wait for. 'networkidle' = network settled (the usual choice to finish a dynamic page).
+            timeout: Optional timeout in milliseconds. Defaults to 5000.
+        """
         return await self.call("waitForState", state=state, timeout=timeout)
