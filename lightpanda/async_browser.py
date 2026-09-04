@@ -42,10 +42,12 @@ class AsyncSession(AsyncSessionMethods):
 
     @property
     def id(self) -> str:
+        """The session id, as the browser knows it."""
         return self._session.id
 
     async def call(self, tool: str, **kwargs):
-        """Invoke a browser tool by name. The generated methods route here."""
+        """Invoke a browser tool by name. The generated methods route here.
+        Same contract as :meth:`Session.call`, awaitable."""
         return await _run(self._executor, self._session.call, tool, **kwargs)
 
     def __getattr__(self, attr: str):
@@ -55,6 +57,7 @@ class AsyncSession(AsyncSessionMethods):
         raise AttributeError(f"{type(self).__name__!r} object has no attribute {attr!r}")
 
     async def close(self) -> None:
+        """Release the session's page; see :meth:`Session.close`."""
         await _run(self._executor, self._session.close)
 
     async def __aenter__(self):
@@ -82,10 +85,18 @@ class AsyncBrowser:
         args: Sequence[str] = (),
         max_concurrency: int = 32,
     ):
-        """``binary``/``env``/``timeout``/``verbose``/``args`` are forwarded
-        to :class:`Browser`. ``max_concurrency`` caps concurrently executing
-        tool calls across this browser's sessions (worker threads are
-        created lazily)."""
+        """Prepare the facade; the process is spawned by :meth:`start`.
+
+        Args:
+            binary: Forwarded to :class:`Browser`.
+            env: Forwarded to :class:`Browser`.
+            timeout: Forwarded to :class:`Browser`.
+            verbose: Forwarded to :class:`Browser`.
+            args: Forwarded to :class:`Browser`.
+            max_concurrency: Caps the tool calls executing concurrently
+                across this browser's sessions; worker threads are created
+                lazily.
+        """
         self._kwargs = dict(binary=binary, env=env, timeout=timeout, verbose=verbose, args=args)
         self._browser: Browser | None = None
         self._owns = True
@@ -117,6 +128,8 @@ class AsyncBrowser:
         return self._browser.tools
 
     async def new_session(self) -> AsyncSession:
+        """Start the browser if needed, then open a new isolated browsing
+        context: its own page, cookies and memory."""
         await self.start()
         return AsyncSession(await _run(self._executor, self._browser.new_session), self._executor)
 
@@ -132,6 +145,8 @@ class AsyncBrowser:
             await page.close()
 
     async def close(self) -> None:
+        """Stop the browser process and the worker threads. A browser adopted
+        with :meth:`wrap` is left running."""
         if self._browser is not None:
             browser, self._browser = self._browser, None
             if self._owns:
