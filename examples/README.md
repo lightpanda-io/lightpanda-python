@@ -143,25 +143,28 @@ away.
 
 ![neurips_trends.png](neurips_trends.png)
 
-### The hand-picked comparison
+### Why the terms are not chosen by hand
 
-`--curated` swaps the discovered terms for six written by hand: large language
-models, diffusion models, in-context learning, RLHF & alignment, graph neural
-networks, GANs. It makes a prettier chart, covering more subfields and moving in
-both directions, and it is worth keeping for exactly one reason — as a warning.
+An earlier version of this example charted six terms I picked myself: large
+language models, diffusion models, in-context learning, RLHF, graph neural
+networks, GANs. It made a prettier chart, covering more subfields and moving in
+both directions, and it was wrong in a way worth recording.
 
 Those six were chosen from what I already expected to have moved, then narrowed
 to the ones that moved most. Four that stayed flat (`transformers` 7.3% → 9.4%,
 `contrastive learning` 5.2% → 3.9%, `federated learning` 1.9% → 1.2%, `agents &
 tool use` 0.0% → 1.8%) were dropped for being boring. That is selecting on the
-outcome, and it is why the default no longer does it. The discovered version
-makes the stronger claim — *everything* that grew was language models — which
-the curated chart hides by construction.
+outcome, and the cost is not just tidiness: the curated chart *hides* the
+strongest result. Letting the corpus nominate the terms says that everything
+which grew was language models in some form. Hand-picking across subfields was
+what made that look untrue.
 
 ### Ranking by meaning
 
-`--semantic` embeds all 19,219 papers and ranks them against whichever term grew
-most, using a query the corpus supplies rather than one written here: the
+This runs by default whenever it is cheap — a `GOOGLE_API_KEY` is set, or the
+cache already covers these papers — and `--no-semantic` turns it off. It embeds
+all 19,219 papers and ranks them against whichever term grew most, using a query
+the corpus supplies rather than one written here: the
 discovered term plus the phrases that keep it company, which here gave *llms,
 llm, large language models, capabilities llms, llm based, reasoning llms*.
 

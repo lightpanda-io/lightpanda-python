@@ -16,12 +16,14 @@ five years at once: 19,219 papers with abstracts.
 
 The terms are not supplied. Every 1-to-3 word phrase is counted and ranked by
 how much its share grew or shrank, and the phrases that peak in a single year
-name what happened that year. ``--curated`` uses six hand-written terms instead.
+name what happened that year. The chart stays on those counts because a count
+cannot be wrong about what it measures.
 
-``--semantic`` embeds every paper and ranks them against the term that grew
-most, surfacing the ones that read like it without using its words. Embeddings
+The papers are then embedded and ranked against the term that grew most, which
+surfaces the ones that read like it while using none of its words. Embeddings
 come from Gemini when GOOGLE_API_KEY is set and from bge-small-en-v1.5 locally
-otherwise, cached by paper URL so the cost is paid once.
+otherwise, cached by paper URL. This runs by default when the key or the cache
+makes it cheap; ``--semantic`` forces it and ``--no-semantic`` skips it.
 
 Run:  uv run examples/neurips_trends.py
       uv run examples/neurips_trends.py --semantic --csv papers.csv
@@ -41,17 +43,6 @@ import pandas as pd
 from lightpanda import AsyncBrowser
 
 YEARS = [2021, 2022, 2023, 2024, 2025]
-
-# Used by --curated only; the default discovers its terms.
-TERMS = {
-    "large language models": r"\blarge language model|\bLLMs?\b|\bGPT-|\bChatGPT\b",
-    "diffusion models": r"\bdiffusion model|\bdenoising diffusion|\bscore-based generat",
-    "in-context learning": r"\bin-context learning\b|\bchain[- ]of[- ]thought\b|\bprompting\b",
-    "RLHF & alignment": r"\bRLHF\b|human feedback|\bpreference optimi|\bDPO\b",
-    "graph neural networks": r"\bgraph neural network|\bGNNs?\b",
-    "GANs": r"\bGANs?\b|\bgenerative adversarial",
-}
-CONCEPT = "large language models, LLMs, GPT, instruction tuning, in-context learning"
 
 PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#4a3aa7", "#e34948", "#e87ba4", "#008300"]
 YEARLIKE = re.compile(r"\b(19|20)\d\d\b|^\d+$")  # "2021" is not a topic
@@ -161,16 +152,6 @@ def discover(df: pd.DataFrame, n: int = 4, floor: float = 0.5) -> pd.DataFrame:
     return out
 
 
-def phrase_trend(df: pd.DataFrame) -> pd.DataFrame:
-    """Share of each year's papers, in percent, whose text matches each phrase."""
-    text = corpus(df)
-    hits = pd.DataFrame({name: text.str.contains(pattern, regex=True, case=False)
-                         for name, pattern in TERMS.items()})
-    out = hits.groupby(df["year"]).mean().mul(100)
-    out.attrs["focus"] = ("large language models", TERMS["large language models"], CONCEPT)
-    return out
-
-
 def report(df: pd.DataFrame, pct: pd.DataFrame) -> None:
     counts = df.groupby("year").size()
     print("\nPapers per year:\n" + counts.to_string())
@@ -242,6 +223,14 @@ def unit(vectors: np.ndarray) -> np.ndarray:
 def default_cache() -> Path:
     base = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
     return base / "neurips_trends" / "embeddings.npz"
+
+
+def cached_already(df: pd.DataFrame, cache: Path) -> bool:
+    """True when the cache can answer for every paper without embedding anything new."""
+    if not cache.exists():
+        return False
+    with np.load(cache, allow_pickle=False) as z:
+        return z["model"].item() == "bge-small-en-v1.5" and df["url"].isin(z["keys"]).all()
 
 
 def embed_all(df: pd.DataFrame, key: str | None, cache: Path) -> np.ndarray:
@@ -356,10 +345,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--years", nargs="+", type=int, default=YEARS, metavar="YEAR",
                         help=f"NeurIPS years to read (default: {YEARS[0]}-{YEARS[-1]})")
-    parser.add_argument("--curated", action="store_true",
-                        help="use the built-in hand-picked terms instead of discovering them")
-    parser.add_argument("--semantic", action="store_true",
-                        help="also rank every paper by meaning; GOOGLE_API_KEY if set, else local")
+    parser.add_argument("--semantic", action=argparse.BooleanOptionalAction, default=None,
+                        help="rank every paper by meaning (default: when it is cheap to do)")
     parser.add_argument("--cache", type=Path, default=default_cache(), metavar="PATH",
                         help="where to keep embeddings between runs")
     parser.add_argument("--csv", type=Path, metavar="PATH", help="write the scraped papers to a CSV file")
@@ -377,9 +364,16 @@ if __name__ == "__main__":
         df.to_csv(args.csv, index=False)
         print(f"Papers written to {args.csv}", file=sys.stderr)
 
-    pct = phrase_trend(df) if args.curated else discover(df)
+    pct = discover(df)
     report(df, pct)
 
-    if args.semantic:
-        semantic_report(df, os.environ.get("GOOGLE_API_KEY"), args.cache, pct.attrs["focus"])
+    key = os.environ.get("GOOGLE_API_KEY")
+    if args.semantic is not False:
+        # On by default when it costs little: an API key, or a cache that already covers these
+        # papers. Encoding 19k abstracts locally from cold takes far too long to do unasked.
+        if args.semantic or key or cached_already(df, args.cache):
+            semantic_report(df, key, args.cache, pct.attrs["focus"])
+        else:
+            print("\nSkipping the ranking: set GOOGLE_API_KEY, or pass --semantic to encode "
+                  "locally (slow the first time, cached after).", file=sys.stderr)
     plot(pct, Path(__file__).with_name("neurips_trends.png"), len(df))
