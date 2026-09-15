@@ -85,14 +85,12 @@ class AsyncBrowser:
         args: Sequence[str] = (),
         max_concurrency: int = 32,
     ):
-        """Prepare the facade; the process is spawned by :meth:`start`.
+        """Store the settings; the process is spawned by :meth:`start`.
+
+        ``binary``, ``env``, ``timeout``, ``verbose`` and ``args`` are
+        forwarded to :class:`Browser`.
 
         Args:
-            binary: Forwarded to :class:`Browser`.
-            env: Forwarded to :class:`Browser`.
-            timeout: Forwarded to :class:`Browser`.
-            verbose: Forwarded to :class:`Browser`.
-            args: Forwarded to :class:`Browser`.
             max_concurrency: Caps the tool calls executing concurrently
                 across this browser's sessions; worker threads are created
                 lazily.
