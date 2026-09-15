@@ -14,12 +14,16 @@ from it, so reading the DOM would still miss most of the conference.
 Lightpanda runs the page and reads that array instead, one browser per year and
 five years at once: 19,219 papers with abstracts, in about a minute.
 
-Those are embedded once, then clustered by Chinese Whispers: link every pair of
-papers that is alike enough, then let each paper repeatedly adopt the
-weighted-majority topic of whatever it is linked to. No number of clusters is
-chosen and nothing is forced into a bucket -- a paper linked to nothing simply
-stays alone. Each cluster is named by the phrases its papers use far more than
-the conference does.
+Those are embedded once, then each year is clustered on its own by Chinese
+Whispers: link every pair of papers alike enough, and let each paper repeatedly
+adopt the weighted-majority topic of whatever it is linked to. No number of
+clusters is chosen anywhere. Pooling the years would average a topic against the
+years it did not exist in, so instead every year contributes its own topics, and
+duplicates are merged afterwards.
+
+The centre of each topic then labels every paper in every year, which makes a
+topic's share comparable across time. Each one is named by the phrases its
+papers use far more than the conference does.
 
 What comes out is the shape of the field: "3d gaussian splatting" appears from
 nothing in 2024, "kv cache, long context" rises tenfold, "federated" and
@@ -135,7 +139,7 @@ def embed_local(texts: list[str]) -> np.ndarray:
 
 
 def unit(vectors: np.ndarray) -> np.ndarray:
-    return vectors / np.linalg.norm(vectors, axis=1, keepdims=True)
+    return vectors / np.linalg.norm(vectors, axis=-1, keepdims=True)
 
 
 def embed(texts: list[str], key: str | None) -> np.ndarray:
@@ -216,13 +220,49 @@ def whisper(adjacency: dict[int, list[tuple[int, float]]], n: int, rounds: int =
     return label
 
 
+def centroids(df: pd.DataFrame, X: np.ndarray, threshold: float, min_cluster: int = 15,
+              merge: float = 0.95) -> np.ndarray:
+    """Discover topics inside each year, then pool them into one set of definitions.
+
+    Clustering a year on its own finds what that year was about. Pooled over five years the
+    same topic would be averaged against the years it did not exist in, and the ones that
+    only appeared recently get lost.
+    """
+    found: list[tuple[int, np.ndarray]] = []
+    for year in sorted(df["year"].unique()):
+        rows = (df["year"] == year).to_numpy()
+        V = X[rows]
+        label = whisper(graph(V, threshold), len(V))
+        sizes = pd.Series(label).value_counts()
+        for cluster in sizes[sizes >= min_cluster].index:
+            members = label == cluster
+            found.append((int(members.sum()), unit(V[members].mean(axis=0))))
+        print(f"  {year}: {len(sizes[sizes >= min_cluster])} topics", file=sys.stderr)
+
+    # The same topic is found again every year it persists, so keep the biggest of each.
+    found.sort(key=lambda f: -f[0])
+    kept: list[np.ndarray] = []
+    for _, vector in found:
+        if all(float(vector @ other) < merge for other in kept):
+            kept.append(vector)
+    print(f"  {len(found)} topics over all years, {len(kept)} after merging duplicates",
+          file=sys.stderr)
+    return np.stack(kept)
+
+
 def topics(df: pd.DataFrame, X: np.ndarray, threshold: float, min_size: int) -> pd.DataFrame:
-    """Cluster the papers, name each cluster, and measure its share of every year."""
+    """Label every paper with its nearest topic, and measure each topic's share of every year.
+
+    One set of definitions covers all five years, so a topic's share is comparable across
+    them. Every paper gets a label, which is only safe because the topics came from the
+    corpus: with a handful of hand-written ones, most papers would land in whichever was
+    least wrong.
+    """
     from sklearn.feature_extraction.text import CountVectorizer
 
     print(f"  clustering {len(df):,} papers ...", file=sys.stderr)
-    adjacency = graph(X, threshold)
-    label = whisper(adjacency, len(df))
+    C = centroids(df, X, threshold)
+    nearest = (X @ C.T).argmax(axis=1)
 
     vec = CountVectorizer(ngram_range=(1, 3), min_df=10, max_df=0.3, stop_words="english",
                           binary=True)
@@ -231,7 +271,7 @@ def topics(df: pd.DataFrame, X: np.ndarray, threshold: float, min_size: int) -> 
     overall = np.asarray(D.mean(axis=0)).ravel()
 
     def name(members: np.ndarray) -> str:
-        """The phrases this cluster uses far more than the conference as a whole."""
+        """The phrases this topic uses far more than the conference as a whole."""
         inside = np.asarray(D[members].mean(axis=0)).ravel()
         lift = (inside + 0.003) / (overall + 0.003)
         kept: list[str] = []
@@ -244,16 +284,14 @@ def topics(df: pd.DataFrame, X: np.ndarray, threshold: float, min_size: int) -> 
         return ", ".join(kept)
 
     years = sorted(df["year"].unique())
-    sizes = pd.Series(label).value_counts()
     rows = {}
-    for cluster in sizes[sizes >= min_size].index:
-        members = label == cluster
+    for topic in range(len(C)):
+        members = nearest == topic
+        if members.sum() < min_size:
+            continue
         rows[name(members)] = [members[(df["year"] == y).to_numpy()].mean() * 100 for y in years]
-    clusters = len(sizes)
     named = pd.DataFrame(rows, index=pd.Index(years, name="year"))
-    edges = sum(len(v) for v in adjacency.values()) // 2
-    print(f"  {edges:,} edges, {clusters:,} clusters, {named.shape[1]} with {min_size}+ papers, "
-          f"{(sizes[sizes >= min_size].sum() / len(df)):.0%} of papers in one", file=sys.stderr)
+    print(f"  {named.shape[1]} topics with {min_size}+ papers", file=sys.stderr)
     return named
 
 
@@ -328,8 +366,8 @@ def plot(pct: pd.DataFrame, out: Path, papers: int) -> None:
     ax.yaxis.grid(True, color=GRID, linewidth=0.8)
     ax.set_axisbelow(True)
     fig.text(0.012, 0.955, "What NeurIPS started working on", fontsize=15, color=INK, va="top")
-    fig.text(0.012, 0.906, "Topics found by clustering paper embeddings, named by the phrases "
-             "each cluster over-uses", fontsize=9.5, color=MUTED, va="top")
+    fig.text(0.012, 0.906, "Topics found by clustering each year's paper embeddings, named by "
+             "the phrases they over-use", fontsize=9.5, color=MUTED, va="top")
     fig.text(0.008, 0.012, f"{papers:,} papers read from neurips.cc/virtual, a site that renders "
              "nothing without JavaScript. Scraped with Lightpanda.",
              fontsize=8, color=MUTED, va="bottom")

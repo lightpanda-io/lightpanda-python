@@ -94,27 +94,32 @@ papers with abstracts**. (Several sessions inside one process contend badly on
 this workload and most of them fail; separate processes are both reliable and
 faster.)
 
-Those get embedded once and clustered by **Chinese Whispers**. Link every pair
-of papers alike enough to be worth linking, then let each paper repeatedly adopt
-the weighted-majority topic of whatever it is linked to. No number of clusters
-is chosen, and a paper linked to nothing stays on its own instead of being
-forced somewhere. Each cluster is then named by the phrases its papers use far
-more than the rest of the conference does.
+Those get embedded once, and then **each year is clustered on its own** by
+Chinese Whispers: link every pair of papers alike enough to be worth linking,
+and let each paper repeatedly adopt the weighted-majority topic of whatever it
+is linked to. No number of clusters is chosen anywhere.
+
+Clustering the years together would average a topic against the years it did not
+exist in, and lose the ones that only appeared recently. So every year nominates
+its own topics, near-duplicates are merged, and the centre of each surviving
+topic then labels every paper in every year. That last step is what makes a
+topic's share comparable across time. Each topic is named by the phrases its
+papers use far more than the rest of the conference does.
 
 Nothing supplies a topic list. This is the whole output:
 
 ```
-206,780 edges, 2,511 clusters, 66 with 60+ papers, 58% of papers in one
+198 topics over all years, 69 after merging duplicates
 
-year                                                                 2021  2022  2023  2024  2025
-grpo, cot, chain thought                                             0.00  0.00  0.08  0.18  1.49
-learning human feedback, rlhf, reinforcement learning human          0.00  0.28  0.36  1.19  1.38
-math, reasoning capabilities, rewards                                0.04  0.10  0.31  0.55  2.13
-large reasoning, reasoning models, thinking                          0.00  0.07  0.08  0.20  1.11
-adversarial training, adversarial robustness, adversarial examples   1.29  0.90  0.47  0.15  0.09
-invariance, distribution shift, distribution ood                     0.77  0.86  0.36  0.29  0.05
-neural ordinary differential, ordinary differential equations, odes  0.94  0.28  0.22  0.33  0.17
-vision transformers, vits, vision tasks                              1.24  0.83  0.42  0.42  0.24
+year                                           2021  2022  2023  2024  2025
+reasoning, models llms, large language models  0.43  0.90  1.84  4.30  8.19
+harmful, safety, attack                        0.04  0.45  0.75  2.31  2.66
+video generation, denoising, diffusion models  0.00  0.24  0.25  0.90  1.09
+visual tokens, mllms, vision language          0.00  0.10  0.25  0.57  0.85
+vision transformers, vits, self attention      2.87  2.00  0.86  0.95  0.43
+domain, generalization, target                 2.57  2.51  1.48  0.93  0.43
+low rank, matrix, matrices                     2.23  1.27  1.12  0.62  0.34
+meta learning, shot, task                      1.67  0.93  0.59  0.15  0.12
 ```
 
 ![neurips_topics.png](neurips_topics.png)
@@ -171,9 +176,16 @@ conference. Too high and it falls apart into fragments nobody is linked to.
 0.875 is where the largest cluster is smallest while most papers still have
 company.
 
-The clusters are reproducible in character rather than identical. Rerun against
-different embeddings and reasoning, RLHF and adversarial robustness reliably
-appear, while the precise split between adjacent clusters moves.
+Labelling every paper by its nearest topic is safe here only because the topics
+came from the corpus. An earlier version of this example tried the same
+assignment with six hand-written topics and reported that two thirds of
+NeurIPS 2021 was about adversarial robustness, which was simply the bucket
+catching everything else. With 69 topics the papers themselves produced, the
+largest holds 4% of the corpus and that distortion is gone.
+
+The topics are reproducible in character rather than identical. Rerun against
+different embeddings and reasoning, safety and vision transformers reliably
+appear, while the precise split between adjacent topics moves.
 
 **On dlib**, which has a well-known Chinese Whispers implementation: it is not
 needed here. Building the graph is numpy work either way and takes 2.5 s; the
