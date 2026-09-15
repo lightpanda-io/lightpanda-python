@@ -12,18 +12,19 @@ name: wheels
 # Triggers:
 #   - pull_request / push to main: build + test against the browser
 #     `nightly` release, no publish.
-#   - release published: build + test the browser release named by the tag
-#     and publish to PyPI. A release tag on this repo is the browser release
-#     tag it ships (e.g. 0.4.0), optionally followed by `-N` (or `.postN`) for
-#     a Python-only re-release of that same browser version: `0.4.0-1` bundles
-#     browser 0.4.0 and publishes as the PEP 440 post-release `0.4.0.post1`.
-#     Plain `X.Y.Z` releases here are created automatically by the browser
-#     repo's release workflow (its `update-python-package` job) whenever it
-#     builds a version tag, so a browser release flows to PyPI with no
-#     polling — the publish still stops at the pypi environment's
-#     required-reviewer gate.
-#   - workflow_dispatch: pick any browser tag, an optional post-release
-#     number and the publish target manually.
+#   - workflow_dispatch with publish=pypi: the release path. The browser
+#     repo's release workflow (its `update-python-package` job) dispatches
+#     this on every version tag, so a browser release flows to PyPI with no
+#     polling; the publish still stops at the pypi environment's
+#     required-reviewer gate, and the `release` job then records the release
+#     on this repo. Dispatch it by hand for a Python-only re-release: browser
+#     tag `0.4.0` with post `1` bundles that same browser and publishes the
+#     PEP 440 post-release `0.4.0.post1`. Any browser tag, post number and
+#     publish target (none / testpypi / pypi) can be picked manually.
+#   - release published: same build, publishing the browser release named by
+#     the tag. Kept as a manual escape hatch — creating a release here by hand
+#     does everything the dispatch does, minus the (already existing) release
+#     record.
 
 on:
   pull_request:
@@ -46,7 +47,9 @@ on:
         default: none
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # The event is part of the group: a release build dispatched by the browser
+  # repo runs on main, so without it a push to main would cancel it.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 env:
@@ -263,3 +266,30 @@ jobs:
           else
             uv publish dist/*.whl
           fi
+
+  # Record the release on this repo once the wheels are on PyPI. The browser
+  # repo dispatches this workflow rather than creating the release itself: its
+  # token can only start workflows here, not write contents. A release created
+  # with GITHUB_TOKEN triggers no workflow, so this cannot loop back into the
+  # `release: published` build above.
+  release:
+    needs: [params, publish]
+    if: needs.params.outputs.publish == 'pypi' && github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write  # create the release
+    steps:
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.params.outputs.wheel_version }}
+          BROWSER_TAG: ${{ needs.params.outputs.release_tag }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release $TAG already exists; nothing to do"
+            exit 0
+          fi
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --title "$TAG" \
+            --notes "Bundles [lightpanda-io/browser ${BROWSER_TAG}](https://github.com/${BROWSER_REPO}/releases/tag/${BROWSER_TAG}). Install with \`pip install lightpanda\`."

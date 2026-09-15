@@ -194,21 +194,32 @@ platforms on every pull request and push to `main`, bundling the browser's
 Publishing is automatic: when the browser repo builds a version release, its
 release workflow (the `update-python-package` job in
 [browser's `release.yml`](https://github.com/lightpanda-io/browser/blob/main/.github/workflows/release.yml))
-creates the matching release here. That release event starts a wheel run that
-builds from that browser release, derives the wheel version from the tag,
-tests on all platforms, and publishes to PyPI via trusted publishing — after a
-maintainer approves the `pypi` environment deployment on the run page. A
-release can also be triggered by hand: create a GitHub release here whose tag
-matches a browser release tag, or use the `workflow_dispatch` path (any
-browser tag, publish to TestPyPI or PyPI) for dry runs.
+dispatches the wheels workflow here with that tag. The run builds from that
+browser release, derives the wheel version from the tag, tests on all
+platforms, and publishes to PyPI via trusted publishing — after a maintainer
+approves the `pypi` environment deployment on the run page. Once published,
+the run's `release` job records the matching GitHub release here.
+
+That job is what creates the release, rather than the browser repo doing it
+directly: the browser repo authenticates with a GitHub App that can start
+workflows here but deliberately has no write access to repository contents,
+so the release is created in-repo with the run's own `GITHUB_TOKEN`. A
+release created that way triggers no workflow, so it cannot loop back into
+the `release: published` build.
+
+A release can also be triggered by hand: run the workflow from the Actions
+tab (any browser tag, publish to TestPyPI or PyPI) for dry runs, or create a
+GitHub release here whose tag matches a browser release tag — the
+`release: published` trigger is kept as an escape hatch and does everything
+the dispatch does.
 
 To ship a packaging or client-side fix without waiting for a new browser
-release, create a GitHub release here tagged `<browser tag>-N`, e.g.
-`0.4.0-1`: it bundles browser `0.4.0` again and publishes as the PEP 440
-post-release `0.4.0.post1` (`.postN` is accepted as the tag too). Bare
-`pip install lightpanda`, `>=` and `~=` requirements pick post-releases up;
-an exact `==0.4.0` pin deliberately does not, so pin with `~=0.4.0` to
-receive them. The `workflow_dispatch` path has a matching `post` input.
+release, dispatch the workflow with the browser tag and a `post` number, e.g.
+browser `0.4.0` with post `1`: it bundles browser `0.4.0` again and publishes
+as the PEP 440 post-release `0.4.0.post1`. Bare `pip install lightpanda`,
+`>=` and `~=` requirements pick post-releases up; an exact `==0.4.0` pin
+deliberately does not, so pin with `~=0.4.0` to receive them. Creating a
+release tagged `0.4.0-1` (or `0.4.0.post1`) by hand works too.
 
 The API reference at
 [lightpanda.io/docs/reference/python](https://lightpanda.io/docs/reference/python)
