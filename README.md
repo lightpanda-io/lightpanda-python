@@ -137,11 +137,11 @@ browser's tools change, the Python methods change with them.
 ## Examples
 
 [`examples/`](examples/) scrapes a JavaScript-rendered site that `requests`
-cannot read, analyses the result with pandas/matplotlib, measures the same
-job against Selenium + headless Chrome (100 quotes in ~3 s / 35 MB vs ~6 s /
-1.2 GB, median of 5 runs), and builds a dataset of the 5,000+ NeurIPS 2025
-papers from the conference's JavaScript-only site to embed, cluster and map
-them. Each script runs standalone: `uv run examples/quotes_analysis.py`.
+cannot read, analyses the result with pandas/matplotlib, measures the same job
+against Selenium + headless Chrome (100 quotes in ~3 s / 35 MB vs ~6 s / 1.2 GB,
+median of 5 runs), and reads five years of NeurIPS — 19,219 paper abstracts that
+never appear in the HTML at all — to chart what the field started talking about.
+Each script runs standalone: `uv run examples/quotes_analysis.py`.
 
 ## License
 
