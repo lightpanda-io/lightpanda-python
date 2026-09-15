@@ -14,14 +14,18 @@ from it -- so even a scraper that could read the DOM would see a fraction.
 Lightpanda runs the page and hands that array straight to Python, one page load
 per year, five years at once. 19,219 papers with abstracts.
 
-Counting how many abstracts mention each term is then local and instant, and
-the answer is not subtle: "large language model" appears in 7 of 2334 papers in
-2021 and in 1,541 of 5858 in 2025.
+Nothing then tells it what to look for. It counts every 1-to-3 word phrase and
+ranks them by how much their share grew, which is enough to find that every
+phrase that grew is about language models in some form: "llms" goes from 0 to
+1,012 of 5858 papers, while "deep neural" falls from 6.3% and crosses it on the
+way down. ``--curated`` swaps in six hand-written terms instead, which makes a
+prettier chart and is kept as a warning about picking terms you already expect.
 
 ``--semantic`` adds the interesting half: it embeds a sample of each year and
-estimates the same share by meaning instead of by phrase. The two curves
-disagree most in the early years, and the gap is the point -- papers that were
-about language models before the field settled on the words for it.
+estimates the same share by meaning instead of by phrase, chasing whichever
+term grew most and describing it with the phrases that keep it company. The two
+curves disagree most in the early years, and the gap is the point -- papers
+that were about language models before the field settled on the words for it.
 
 It uses Gemini when GOOGLE_API_KEY is set and bge-small-en-v1.5 locally (ONNX,
 no torch, no network) otherwise. The model matters: ranking the true phrase
@@ -146,7 +150,8 @@ def discover(df: pd.DataFrame, n: int = 4, floor: float = 0.5) -> pd.DataFrame:
         return kept
 
     ratio = (share[-1] + 0.15) / (share[0] + 0.15)
-    picked = take(np.argsort(ratio)[::-1], -1) + take(np.argsort(ratio), 0)
+    risers = take(np.argsort(ratio)[::-1], -1)
+    picked = risers + take(np.argsort(ratio), 0)
     print(f"\nDiscovered from {X.shape[1]} candidate phrases, ranked by growth.", file=sys.stderr)
 
     # A phrase that peaks in one year is usually a real event in that year.
@@ -157,7 +162,17 @@ def discover(df: pd.DataFrame, n: int = 4, floor: float = 0.5) -> pd.DataFrame:
         lift[peaks != row] = 0
         names = [terms[i] for i in take(np.argsort(lift)[::-1], row)]
         print(f"  {year}: " + ", ".join(names))
-    return pd.DataFrame({terms[i]: share[:, i] for i in picked}, index=pd.Index(years, name="year"))
+
+    out = pd.DataFrame({terms[i]: share[:, i] for i in picked}, index=pd.Index(years, name="year"))
+    # What --semantic should chase: the phrase that grew most, described by the phrases that
+    # keep it company rather than by anything written here.
+    top = risers[0]
+    inside = np.asarray(X[X[:, top].toarray().ravel() > 0].mean(axis=0)).ravel()
+    company = (inside + 0.002) / (np.asarray(X.mean(axis=0)).ravel() + 0.002)
+    company[[i for i in range(len(terms)) if in_title[i] < 0.04]] = 0
+    neighbours = [terms[i] for i in np.argsort(company)[::-1][:8]]
+    out.attrs["focus"] = (terms[top], re.escape(terms[top]), ", ".join(neighbours))
+    return out
 
 
 def phrase_trend(df: pd.DataFrame) -> pd.DataFrame:
@@ -165,7 +180,9 @@ def phrase_trend(df: pd.DataFrame) -> pd.DataFrame:
     text = corpus(df)
     hits = pd.DataFrame({name: text.str.contains(pattern, regex=True, case=False)
                          for name, pattern in TERMS.items()})
-    return hits.groupby(df["year"]).mean().mul(100)
+    out = hits.groupby(df["year"]).mean().mul(100)
+    out.attrs["focus"] = ("large language models", TERMS["large language models"], CONCEPT)
+    return out
 
 
 def embed_gemini(texts: list[str], key: str) -> np.ndarray:
@@ -201,20 +218,22 @@ def unit(vectors: np.ndarray) -> np.ndarray:
     return vectors / np.linalg.norm(vectors, axis=1, keepdims=True)
 
 
-def semantic_trend(df: pd.DataFrame, key: str | None, per_year: int) -> tuple[pd.Series, pd.DataFrame]:
+def semantic_trend(df: pd.DataFrame, key: str | None, per_year: int,
+                   focus: tuple[str, str, str]) -> tuple[pd.Series, pd.DataFrame]:
     """Estimate the same share by meaning, on a sample, and show what the phrase missed."""
     sample = pd.concat([g.sample(min(per_year, len(g)), random_state=0)
                         for _, g in df.groupby("year")])
     # Ranking the real phrase matches to the top scores 0.96 AUC with Gemini and 0.91 with
     # bge-small locally; a static model manages 0.79, which is not enough to see the trend.
+    term, pattern, concept = focus
     which = "gemini-embedding-001" if key else "bge-small-en-v1.5, locally (slower)"
-    print(f"\nEmbedding {len(sample)} papers with {which} ...", file=sys.stderr)
+    print(f"\nEmbedding {len(sample)} papers with {which} to find {term!r} by meaning "
+          f"({concept}) ...", file=sys.stderr)
     texts = corpus(sample).tolist()
-    X, q = ((embed_gemini(texts, key), embed_gemini([CONCEPT], key)[0]) if key
-            else (embed_local(texts), embed_local([CONCEPT])[0]))
+    X, q = ((embed_gemini(texts, key), embed_gemini([concept], key)[0]) if key
+            else (embed_local(texts), embed_local([concept])[0]))
     sample = sample.assign(similarity=X @ q,
-                           phrase=corpus(sample).str.contains(TERMS["large language models"],
-                                                              regex=True, case=False))
+                           phrase=corpus(sample).str.contains(pattern, regex=True, case=False))
     # One cutoff for all years, set so the overall rate matches the phrase rate. The shape across
     # years, and which papers swap in, are what the comparison is about.
     cutoff = sample["similarity"].quantile(1 - sample["phrase"].mean())
@@ -236,15 +255,14 @@ def report(df: pd.DataFrame, pct: pd.DataFrame) -> None:
               f"({int(round(b / 100 * counts[last]))} of {counts[last]} papers in {last})")
 
 
-def report_semantic(sem: pd.Series, sample: pd.DataFrame, pct: pd.DataFrame) -> None:
-    term = "large language models"
+def report_semantic(sem: pd.Series, sample: pd.DataFrame, pct: pd.DataFrame, term: str) -> None:
     print(f"\n{term!r}, counted two ways (%):")
     both = pd.DataFrame({"phrase": pct[term], "semantic (sampled)": sem}).round(1)
     print(both.to_string())
     missed = sample[sample["semantic"] & ~sample["phrase"]].sort_values("similarity", ascending=False)
     early = missed[missed["year"] <= sample["year"].min() + 1]
     if len(early):
-        print(f"\nRanked as language-model work without using the phrase ({len(missed)} in the "
+        print(f"\nRanked as {term!r} work without using the phrase ({len(missed)} in the "
               f"sample, {len(early)} of them before the term caught on):")
         for row in (early.iloc[i] for i in range(min(3, len(early)))):
             print(f"  [{row['year']}] {row['title']}"
@@ -271,7 +289,7 @@ def plot(pct: pd.DataFrame, sem: pd.Series | None, out: Path) -> None:
     ends, names = list(pct.iloc[-1]), list(pct.columns)
     if sem is not None:
         ends.append(sem.iloc[-1])
-        names.append("large language models, by meaning")
+        names.append(f"{pct.attrs['focus'][0]}, by meaning")
     top = max(max(pct.max()), max(ends))
     labels = spread(ends, gap=top * 0.052)  # keep end labels legible at any y-range
     for i, name in enumerate(pct.columns):
@@ -308,8 +326,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--years", nargs="+", type=int, default=YEARS, metavar="YEAR",
                         help=f"NeurIPS years to read (default: {YEARS[0]}-{YEARS[-1]})")
-    parser.add_argument("--discover", action="store_true",
-                        help="find the terms in the corpus instead of using the built-in list")
+    parser.add_argument("--curated", action="store_true",
+                        help="use the built-in hand-picked terms instead of discovering them")
     parser.add_argument("--semantic", action="store_true",
                         help="also count by meaning; uses GOOGLE_API_KEY if set, else a local model")
     parser.add_argument("--sample", type=int, default=400, metavar="N",
@@ -329,11 +347,12 @@ if __name__ == "__main__":
         df.to_csv(args.csv, index=False)
         print(f"Papers written to {args.csv}", file=sys.stderr)
 
-    pct = discover(df) if args.discover else phrase_trend(df)
+    pct = phrase_trend(df) if args.curated else discover(df)
     report(df, pct)
 
     sem = None
     if args.semantic:
-        sem, sample = semantic_trend(df, os.environ.get("GOOGLE_API_KEY"), args.sample)
-        report_semantic(sem, sample, pct)
+        focus = pct.attrs["focus"]
+        sem, sample = semantic_trend(df, os.environ.get("GOOGLE_API_KEY"), args.sample, focus)
+        report_semantic(sem, sample, pct, focus[0])
     plot(pct, sem, Path(__file__).with_name("neurips_trends.png"))
