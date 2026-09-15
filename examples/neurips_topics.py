@@ -311,9 +311,9 @@ def plot(pct: pd.DataFrame, out: Path, papers: int) -> None:
     for i, column in enumerate(top.columns):
         ax.plot(years, top[column], color=PALETTE[i], linewidth=2, marker="o", markersize=5,
                 markeredgecolor=SURFACE, markeredgewidth=1.5)
+        first, last = top[column].iloc[0], top[column].iloc[-1]
         handles.append(plt.Line2D([], [], marker="o", linestyle="", markersize=7,
-                                  color=PALETTE[i],
-                                  label=f"{column}   {top[column].iloc[0]:.2f} → {top[column].iloc[-1]:.2f}%"))
+                                  color=PALETTE[i], label=f"{column}   {first:.2f} → {last:.2f}%"))
     ax.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, -0.06), ncol=2,
               frameon=False, fontsize=9, labelcolor=MUTED, handletextpad=0.4, columnspacing=2)
     ax.set_xticks(years)
