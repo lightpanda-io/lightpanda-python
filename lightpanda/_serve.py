@@ -108,14 +108,9 @@ class _AsyncServeProcess(Generic[_S]):
         args: Sequence[str] = (),
         port: int | None = None,
     ):
-        """Prepare the facade; the process is spawned by :meth:`start`.
+        """Store the settings; the process is spawned by :meth:`start`.
 
-        Args:
-            binary: Forwarded to the sync class.
-            env: Forwarded to the sync class.
-            verbose: Forwarded to the sync class.
-            args: Forwarded to the sync class.
-            port: Forwarded to the sync class.
+        Arguments are forwarded to the sync class.
         """
         self._kwargs = dict(binary=binary, env=env, verbose=verbose, args=args, port=port)
         self._server: _S | None = None
