@@ -158,54 +158,53 @@ outcome, and it is why the default no longer does it. The discovered version
 makes the stronger claim — *everything* that grew was language models — which
 the curated chart hides by construction.
 
-### Counting by meaning instead
+### Ranking by meaning
 
-`--semantic` asks the same question without the phrase: it embeds a sample of
-each year and estimates the share by similarity instead of by string match. It
-uses Gemini when `GOOGLE_API_KEY` is set and a local ONNX model otherwise, so it
-runs either way.
+`--semantic` embeds all 19,219 papers and ranks them against whichever term grew
+most, using a query the corpus supplies rather than one written here: the
+discovered term plus the phrases that keep it company, which here gave *llms,
+llm, large language models, capabilities llms, llm based, reasoning llms*.
 
-Nothing is hand-written here either. It chases whichever term grew most — `llms`
-— and describes it with the phrases that keep it company in the same papers,
-which the corpus supplies: *llms, llm, large language models, capabilities llms,
-llm based, reasoning llms, llm generated*.
+It only ranks. Turning a ranking into a share per year needs a threshold, and
+every threshold is a choice that decides the answer, so the chart stays on
+phrase counts and the embeddings do the thing they are reliable at. Ordering
+documents by similarity is that thing; deciding whether one document clears a
+bar is not.
+
+What it surfaces is the papers that read like the topic while using none of its
+words:
 
 ```
-      phrase  semantic (sampled)
-2021     0.0                 0.6
-2022     0.3                 0.8
-2023     3.9                 5.8
-2024    13.1                12.8
-2025    17.3                14.0
+Ranked highest among papers that never use any of those words:
+  [2025] 0.79  Longer Context, Deeper Thinking: Uncovering the Role of Long-Context Ability in Reasoning
+  [2025] 0.79  Reasoning Models Sometimes Output Illegible Chains of Thought
+  [2022] 0.78  LogiGAN: Learning Logical Reasoning via Adversarial Pre-training
 ```
 
-The disagreement is the interesting part. The semantic line leads the phrase
-line into 2023, and the extra papers are real: *"Think Big, Teach Small: Do
-Language Models Distil Occam's Razor?"* (2021) and *"Diffusion-LM Improves
-Controllable Text Generation"* (2022) are language model work written before the
-field settled on the words we now use for it. A keyword cannot find those. The
-cutoff is calibrated once so the overall rate matches the phrase rate, which is
-why the later years come out lower to pay for it — the shape of the
-redistribution is the result, not the absolute level.
+Which says something the counting missed. The papers that avoid the LLM
+vocabulary in 2025 are not stragglers, they are reasoning-model papers: the
+words moved on again, from `llms` to `reasoning models`, and a phrase count
+anchored on the old vocabulary cannot see it.
 
-Which embedding does the work matters more than it might seem. Ranking the true
-phrase matches to the top, over the same 1,250-paper sample:
+Embeddings come from `gemini-embedding-2` when `GOOGLE_API_KEY` is set and from
+`bge-small-en-v1.5` locally otherwise, and are cached by paper URL so the cost
+is paid once. A cold run over all five years takes about a minute with a key
+and rather longer without one; the cache is around 27 MB and lives under
+`~/.cache/neurips_trends` unless `--cache` says otherwise.
+
+Which model does the work matters. Ranking the true phrase matches to the top,
+over the same 1,250-paper sample:
 
 | model | AUC | to embed 1,250 papers |
 |---|---:|---|
-| `gemini-embedding-001` | 0.956 | one API call per 100, needs a key |
+| `gemini-embedding-2` | 0.958 | one API call per 100, needs a key |
 | `bge-base-en-v1.5` (ONNX) | 0.923 | 481 s on CPU |
-| **`bge-small-en-v1.5` (ONNX)** — what the script uses without a key | **0.909** | **130 s on CPU** |
+| **`bge-small-en-v1.5` (ONNX)** — the keyless default | **0.909** | **130 s on CPU** |
 | `all-MiniLM-L6-v2` (ONNX) | 0.854 | 22 s on CPU |
 | `potion-base-32M` (model2vec, static) | 0.844 | 0.4 s |
 | `potion-base-8M` (model2vec, static) | 0.790 | 0.5 s |
 
-None of these need a GPU and only the first needs a network. The static models
-are effectively free and useless for this: they score every year at about the
-same level, flattening the trend into a line that misses it. `all-MiniLM-L6-v2`
-is the speed pick if 130 s is too long to wait.
-
-The general lesson is not "use the biggest model". It is that embeddings are
-good at *ranking* by meaning and much weaker at deciding whether one document
-clears a bar — which is why the headline chart counts phrases and the semantic
-pass is framed as a comparison rather than as the answer.
+Only the first needs a network and none need a GPU. The static models are
+effectively free and useless here: they score every year about the same and
+flatten the trend into a line. `all-MiniLM-L6-v2` is the pick if 130 seconds is
+too long to wait.
