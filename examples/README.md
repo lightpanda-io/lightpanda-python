@@ -112,6 +112,63 @@ Seven of 2334 papers mentioned large language models in 2021. In 2025 it was
 
 ![neurips_trends.png](neurips_trends.png)
 
+### Where those six terms came from, and checking them
+
+They were picked by hand, from what I already expected to have moved, and then
+narrowed to six that fit one readable chart. That is selecting on the outcome:
+four terms that barely moved (`transformers` 7.3% → 9.4%, `contrastive
+learning` 5.2% → 3.9%, `federated learning` 1.9% → 1.2%, `agents & tool use`
+0.0% → 1.8%) were dropped for being flat. Read the chart as six trends worth
+seeing, not as the six biggest topics at NeurIPS.
+
+`--discover` drops the list and asks the corpus instead. It counts every 1–3
+word phrase, ranks by the *ratio* between the first and last year rather than
+the absolute change, and collapses phrases that name one topic by how often
+they appear in the same papers:
+
+```
+year                    2021  2022  2023  2024  2025
+llms                     0.0   0.3   3.9  13.1  17.3
+foundation models        0.0   0.3   1.4   2.6   3.5
+large language model     0.0   0.2   1.2   1.9   3.1
+vlms                     0.0   0.0   0.3   1.5   2.9
+generative adversarial   1.5   1.1   0.7   0.3   0.2
+adversarial robustness   1.6   0.9   0.8   0.6   0.3
+deep neural              6.3   5.2   4.2   2.6   1.3
+nets                     1.4   0.7   0.4   0.3   0.2
+```
+
+The headline claim survives, and gets stronger: every phrase that grew is about
+language models in some form. That is *more* than the curated chart says, and it
+is also why that chart needed hand-picking to look varied.
+
+Getting there took two filters, both derived from the corpus rather than from a
+list of words I disapprove of. Ranking by ratio rather than absolute change is
+what keeps out writing-style drift, which is real and large — `introduce` and
+`framework` rose about 20 points each, `proposed` and `consider` fell — but is
+not a topic. And a phrase is only kept if it turns up in some paper's *title*:
+authors put topics in titles and never put prose there, which is what separates
+`3d gaussian splatting` from `advancements`. The cost of that second filter is
+bare model names such as `qwen2`, which appear in abstracts as baselines and
+almost never in a title.
+
+The per-year view is the sharper one, since a phrase that peaks in a single year
+is usually a real event in that year:
+
+```
+2021: networks deep, algorithms learning, learning learn, nets
+2022: sparsely, neural tangent kernel, constants, variational autoencoders
+2023: chatgpt, human visual, stable diffusion, diffusion probabilistic
+2024: 3d gaussian splatting, 3d gaussians, chat, mamba
+2025: r1, grpo, reasoning models, mllms
+```
+
+2023 onwards needs no interpretation. The two oldest years are weak for a
+structural reason worth noticing: they are the boundary of the window, so
+nothing can be shown rising into them, and what is distinctive about them is
+mostly what later disappeared.
+
+
 ### Counting by meaning instead
 
 `--semantic` asks the same question without the phrase: it embeds a sample of

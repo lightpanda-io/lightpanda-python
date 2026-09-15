@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["lightpanda", "pandas", "matplotlib", "numpy", "requests", "fastembed"]
+# dependencies = ["lightpanda", "pandas", "matplotlib", "numpy", "requests", "fastembed",
+#                 "scikit-learn"]
 # ///
 """What NeurIPS started talking about: five years of abstracts from a JS-only site.
 
@@ -35,6 +36,7 @@ import argparse
 import asyncio
 import functools
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -58,7 +60,8 @@ TERMS = {
 # What "large language models" means, for the semantic pass.
 CONCEPT = "large language models, LLMs, GPT, instruction tuning, in-context learning"
 
-PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#4a3aa7", "#e34948"]
+PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#4a3aa7", "#e34948", "#e87ba4", "#008300"]
+YEARLIKE = re.compile(r"\b(19|20)\d\d\b|^\d+$")  # "2021" is not a topic
 INK, MUTED, SURFACE, GRID = "#0b0b0b", "#52514e", "#fcfcfb", "#e8e7e2"
 
 # The page keeps every paper here; only 400 of them ever reach the DOM.
@@ -99,6 +102,62 @@ async def scrape(years: list[int]) -> pd.DataFrame:
 
 def corpus(df: pd.DataFrame) -> pd.Series:
     return df["title"] + ". " + df["abstract"]
+
+
+def discover(df: pd.DataFrame, n: int = 4, floor: float = 0.5) -> pd.DataFrame:
+    """Let the corpus nominate the terms: the phrases whose share grew and shrank most.
+
+    Ranking by *ratio* rather than by absolute change is what separates topics from prose:
+    a new topic multiplies from nothing, while writing style drifts smoothly across every
+    paper. Near-duplicate names for one topic are collapsed by how often they co-occur.
+    """
+    from sklearn.feature_extraction.text import CountVectorizer
+
+    vec = CountVectorizer(ngram_range=(1, 3), min_df=30, max_df=0.4, stop_words="english",
+                          binary=True)
+    X = vec.fit_transform(corpus(df).str.lower())
+    terms = np.array(vec.get_feature_names_out())
+    # Authors put topics in titles and never put prose there, so the share of a phrase's papers
+    # that carry it in the title separates "3d gaussian splatting" from "advancements". It is a
+    # property of the corpus, not a hand-written stoplist -- the cost is bare model names like
+    # "qwen2", which appear in abstracts as baselines and rarely in a title.
+    in_title = (np.asarray(vec.transform(df["title"].str.lower()).sum(axis=0)).ravel()
+                / np.maximum(np.asarray(X.sum(axis=0)).ravel(), 1))
+    years = sorted(df["year"].unique())
+    share = np.vstack([np.asarray(X[(df["year"] == y).to_numpy()].mean(axis=0)).ravel()
+                       for y in years]) * 100
+    seen = np.asarray(X.sum(axis=0)).ravel()
+
+    def same_topic(i: int, j: int) -> bool:
+        both = X[:, i].multiply(X[:, j]).sum()
+        return (terms[i] in terms[j] or terms[j] in terms[i]
+                or both / (seen[i] + seen[j] - both) > 0.25)
+
+    def take(order: np.ndarray, row: int) -> list[int]:
+        kept: list[int] = []
+        for i in order:
+            if YEARLIKE.search(terms[i]) or share[row, i] < floor or in_title[i] < 0.04:
+                continue
+            if any(same_topic(i, k) for k in kept):
+                continue
+            kept.append(int(i))
+            if len(kept) == n:
+                return kept
+        return kept
+
+    ratio = (share[-1] + 0.15) / (share[0] + 0.15)
+    picked = take(np.argsort(ratio)[::-1], -1) + take(np.argsort(ratio), 0)
+    print(f"\nDiscovered from {X.shape[1]} candidate phrases, ranked by growth.", file=sys.stderr)
+
+    # A phrase that peaks in one year is usually a real event in that year.
+    print("\nWhat peaked each year:")
+    peaks = share.argmax(axis=0)
+    for row, year in enumerate(years):
+        lift = (share[row] + 0.2) / (np.delete(share, row, axis=0).mean(axis=0) + 0.2)
+        lift[peaks != row] = 0
+        names = [terms[i] for i in take(np.argsort(lift)[::-1], row)]
+        print(f"  {year}: " + ", ".join(names))
+    return pd.DataFrame({terms[i]: share[:, i] for i in picked}, index=pd.Index(years, name="year"))
 
 
 def phrase_trend(df: pd.DataFrame) -> pd.DataFrame:
@@ -213,7 +272,8 @@ def plot(pct: pd.DataFrame, sem: pd.Series | None, out: Path) -> None:
     if sem is not None:
         ends.append(sem.iloc[-1])
         names.append("large language models, by meaning")
-    labels = spread(ends, gap=1.15)
+    top = max(max(pct.max()), max(ends))
+    labels = spread(ends, gap=top * 0.052)  # keep end labels legible at any y-range
     for i, name in enumerate(pct.columns):
         ax.plot(years, pct[name], color=PALETTE[i], linewidth=2, marker="o", markersize=5,
                 markeredgecolor=SURFACE, markeredgewidth=1.5)
@@ -225,7 +285,7 @@ def plot(pct: pd.DataFrame, sem: pd.Series | None, out: Path) -> None:
                 color=PALETTE[i % len(PALETTE)], fontsize=9.5, va="center")
     ax.set_xticks(years)
     ax.set_xlim(years[0] - 0.1, years[-1] + 2.5)
-    ax.set_ylim(0, max(max(pct.max()), ends[-1]) * 1.12)
+    ax.set_ylim(0, top * 1.12)
     ax.set_ylabel("% of accepted papers", color=MUTED, fontsize=9)
     ax.tick_params(colors=MUTED, length=0, labelsize=9.5)
     for side in ("top", "right", "left"):
@@ -248,6 +308,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--years", nargs="+", type=int, default=YEARS, metavar="YEAR",
                         help=f"NeurIPS years to read (default: {YEARS[0]}-{YEARS[-1]})")
+    parser.add_argument("--discover", action="store_true",
+                        help="find the terms in the corpus instead of using the built-in list")
     parser.add_argument("--semantic", action="store_true",
                         help="also count by meaning; uses GOOGLE_API_KEY if set, else a local model")
     parser.add_argument("--sample", type=int, default=400, metavar="N",
@@ -267,7 +329,7 @@ if __name__ == "__main__":
         df.to_csv(args.csv, index=False)
         print(f"Papers written to {args.csv}", file=sys.stderr)
 
-    pct = phrase_trend(df)
+    pct = discover(df) if args.discover else phrase_trend(df)
     report(df, pct)
 
     sem = None
