@@ -94,27 +94,27 @@ papers with abstracts**. (Several sessions inside one process contend badly on
 this workload and most of them fail; separate processes are both reliable and
 faster.)
 
-Those get embedded once and clustered by **Chinese Whispers**: every paper
-starts as its own topic, then repeatedly adopts the weighted-majority topic of
-its nearest neighbours. No number of clusters is chosen, and a paper with no
-close neighbour simply stays on its own instead of being forced somewhere. Each
-cluster is then named by the phrases its papers use far more than the rest of
-the conference does.
+Those get embedded once and clustered by **Chinese Whispers**. Link every pair
+of papers alike enough to be worth linking, then let each paper repeatedly adopt
+the weighted-majority topic of whatever it is linked to. No number of clusters
+is chosen, and a paper linked to nothing stays on its own instead of being
+forced somewhere. Each cluster is then named by the phrases its papers use far
+more than the rest of the conference does.
 
 Nothing supplies a topic list. This is the whole output:
 
 ```
-735 clusters, 88 with 60+ papers, 52% of papers in one
+206,780 edges, 2,511 clusters, 66 with 60+ papers, 58% of papers in one
 
-year                                                         2021  2022  2023  2024  2025
-chain thought, mllms, vision language models                 0.00  0.00  0.22  0.37  1.62
-reasoning models, thinking, cot                              0.00  0.10  0.20  0.37  1.47
-reasoning, llm, large language                               0.13  0.17  0.36  1.06  2.80
-diffusion based, diffusion model, policies                   0.00  0.03  0.20  0.66  0.44
-adversarial robustness, adversarial training, perturbations  2.19  1.86  1.28  0.48  0.22
-invariance, ood, invariant                                   0.77  0.76  0.42  0.15  0.09
-imitation learning, cloning, demonstrations                  0.99  0.65  0.61  0.24  0.17
-federated learning, distributed, communication               2.06  1.69  1.31  1.10  0.43
+year                                                                 2021  2022  2023  2024  2025
+grpo, cot, chain thought                                             0.00  0.00  0.08  0.18  1.49
+learning human feedback, rlhf, reinforcement learning human          0.00  0.28  0.36  1.19  1.38
+math, reasoning capabilities, rewards                                0.04  0.10  0.31  0.55  2.13
+large reasoning, reasoning models, thinking                          0.00  0.07  0.08  0.20  1.11
+adversarial training, adversarial robustness, adversarial examples   1.29  0.90  0.47  0.15  0.09
+invariance, distribution shift, distribution ood                     0.77  0.86  0.36  0.29  0.05
+neural ordinary differential, ordinary differential equations, odes  0.94  0.28  0.22  0.33  0.17
+vision transformers, vits, vision tasks                              1.24  0.83  0.42  0.42  0.24
 ```
 
 ![neurips_topics.png](neurips_topics.png)
@@ -154,12 +154,35 @@ to 0.90, so anything that compares a paper against a *global* bar drowns in the
 question. It only asks which papers are near each other, and relative
 neighbourhood structure survives the compression intact.
 
-Two parameters remain, `--neighbours` (15) and `--threshold` (0.85), but they
-shape the graph rather than draw a classification boundary, and the cluster
-count is stable from 0.80 to 0.87. The clusters are reproducible in character
-rather than identical: rerun against different embeddings and "reasoning, llm"
-and "federated learning" reliably appear, while the precise split between
-neighbouring clusters moves.
+One parameter remains, `--threshold`, and it decides how alike two papers must
+be to be linked at all. It is worth seeing what it does, because the useful
+range is narrow:
+
+| threshold | edges | clusters | largest | 60+ | covered |
+|---|---|---|---|---|---|
+| 0.850 | 905,099 | 289 | 18.7% | 31 | 94% |
+| 0.860 | 520,105 | 671 | 16.8% | 52 | 88% |
+| 0.870 | 284,891 | 1496 | 10.6% | 56 | 73% |
+| **0.875** | **206,780** | **2149** | **5.4%** | **61** | **65%** |
+| 0.880 | 147,231 | 3041 | 6.9% | 58 | 55% |
+
+Too low and the graph percolates: at 0.850 a single blob swallows a fifth of the
+conference. Too high and it falls apart into fragments nobody is linked to.
+0.875 is where the largest cluster is smallest while most papers still have
+company.
+
+The clusters are reproducible in character rather than identical. Rerun against
+different embeddings and reasoning, RLHF and adversarial robustness reliably
+appear, while the precise split between adjacent clusters moves.
+
+**On dlib**, which has a well-known Chinese Whispers implementation: it is not
+needed here. Building the graph is numpy work either way and takes 2.5 s; the
+propagation itself is 0.88 s in plain Python against 0.38 s in dlib's C++. Half
+a second does not pay for a source build needing CMake and a C++ toolchain, and
+writing the loop out means the example can show the algorithm rather than hide
+it behind a call. (dlib's own all-in-one `chinese_whispers_clustering`, which
+builds edges itself, is far slower still — about 80× — because it does the
+pairwise comparison in Python objects rather than in numpy.)
 
 ### Which model
 

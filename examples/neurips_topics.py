@@ -14,11 +14,12 @@ from it, so reading the DOM would still miss most of the conference.
 Lightpanda runs the page and reads that array instead, one browser per year and
 five years at once: 19,219 papers with abstracts, in about a minute.
 
-Those are embedded once, then clustered by Chinese Whispers: every paper starts
-as its own topic and repeatedly adopts the majority topic of its nearest
-neighbours. No number of clusters is chosen and nothing is forced into a bucket
--- a paper with no close neighbours simply stays alone. Each cluster is named by
-the phrases its papers use far more than the conference does.
+Those are embedded once, then clustered by Chinese Whispers: link every pair of
+papers that is alike enough, then let each paper repeatedly adopt the
+weighted-majority topic of whatever it is linked to. No number of clusters is
+chosen and nothing is forced into a bucket -- a paper linked to nothing simply
+stays alone. Each cluster is named by the phrases its papers use far more than
+the conference does.
 
 What comes out is the shape of the field: "3d gaussian splatting" appears from
 nothing in 2024, "kv cache, long context" rises tenfold, "federated" and
@@ -36,6 +37,7 @@ import os
 import re
 import sys
 import time
+from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
@@ -177,52 +179,50 @@ def embed_corpus(df: pd.DataFrame, key: str | None, cache: Path) -> np.ndarray:
     return np.stack([store[k] for k in keys]).astype(np.float32)
 
 
-def neighbours(X: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray]:
-    """For every paper, its k nearest others, in chunks so the full matrix never exists."""
-    n = len(X)
-    idx = np.empty((n, k), dtype=np.int32)
-    sim = np.empty((n, k), dtype=np.float32)
-    for i in range(0, n, 2000):
+def graph(X: np.ndarray, threshold: float) -> dict[int, list[tuple[int, float]]]:
+    """Every pair of papers more alike than `threshold`, as an adjacency list.
+
+    Compared in chunks, so the 185 million possible pairs never exist at once. The bar is
+    high enough that what survives is small: about 200,000 edges out of those millions.
+    """
+    adjacency: dict[int, list[tuple[int, float]]] = defaultdict(list)
+    for i in range(0, len(X), 2000):
         block = X[i:i + 2000] @ X.T
         for row in range(len(block)):
-            block[row, i + row] = -1  # a paper is not its own neighbour
-        top = np.argpartition(-block, k, axis=1)[:, :k]
-        scores = np.take_along_axis(block, top, axis=1)
-        order = np.argsort(-scores, axis=1)
-        idx[i:i + 2000] = np.take_along_axis(top, order, axis=1)
-        sim[i:i + 2000] = np.take_along_axis(scores, order, axis=1)
-    return idx, sim
+            block[row, :i + row + 1] = -1  # upper triangle: count each pair once
+        for r, c in zip(*np.where(block > threshold)):
+            a, b, weight = int(r) + i, int(c), float(block[r, c])
+            adjacency[a].append((b, weight))
+            adjacency[b].append((a, weight))
+    return adjacency
 
 
-def whisper(idx: np.ndarray, sim: np.ndarray, threshold: float, rounds: int = 8) -> np.ndarray:
-    """Chinese Whispers: take the weighted-majority label of your close neighbours, repeatedly.
+def whisper(adjacency: dict[int, list[tuple[int, float]]], n: int, rounds: int = 8) -> np.ndarray:
+    """Chinese Whispers: take the weighted-majority label of your neighbours, repeatedly.
 
     Unlike k-means this needs no k, and unlike a nearest-topic assignment it leaves papers
     with no close neighbour in a cluster of their own rather than forcing them somewhere.
     """
     rng = np.random.default_rng(0)
-    label = np.arange(len(idx))
-    close = sim > threshold
+    label = np.arange(n)
     for _ in range(rounds):
-        for i in rng.permutation(len(idx)):
-            others, weights = idx[i][close[i]], sim[i][close[i]]
-            if len(others) == 0:
+        for i in rng.permutation(n):
+            if not (close := adjacency.get(i)):
                 continue
-            tally: dict[int, float] = {}
-            for other, weight in zip(label[others], weights):
-                tally[other] = tally.get(other, 0.0) + float(weight)
+            tally: dict[int, float] = defaultdict(float)
+            for j, weight in close:
+                tally[label[j]] += weight
             label[i] = max(tally, key=tally.get)
     return label
 
 
-def topics(df: pd.DataFrame, X: np.ndarray, k: int, threshold: float,
-           min_size: int) -> pd.DataFrame:
+def topics(df: pd.DataFrame, X: np.ndarray, threshold: float, min_size: int) -> pd.DataFrame:
     """Cluster the papers, name each cluster, and measure its share of every year."""
     from sklearn.feature_extraction.text import CountVectorizer
 
     print(f"  clustering {len(df):,} papers ...", file=sys.stderr)
-    idx, sim = neighbours(X, k)
-    label = whisper(idx, sim, threshold)
+    adjacency = graph(X, threshold)
+    label = whisper(adjacency, len(df))
 
     vec = CountVectorizer(ngram_range=(1, 3), min_df=10, max_df=0.3, stop_words="english",
                           binary=True)
@@ -251,7 +251,8 @@ def topics(df: pd.DataFrame, X: np.ndarray, k: int, threshold: float,
         rows[name(members)] = [members[(df["year"] == y).to_numpy()].mean() * 100 for y in years]
     clusters = len(sizes)
     named = pd.DataFrame(rows, index=pd.Index(years, name="year"))
-    print(f"  {clusters:,} clusters, {named.shape[1]} with {min_size}+ papers, "
+    edges = sum(len(v) for v in adjacency.values()) // 2
+    print(f"  {edges:,} edges, {clusters:,} clusters, {named.shape[1]} with {min_size}+ papers, "
           f"{(sizes[sizes >= min_size].sum() / len(df)):.0%} of papers in one", file=sys.stderr)
     return named
 
@@ -347,10 +348,8 @@ if __name__ == "__main__":
     parser.add_argument("--years", nargs="+", type=int, default=YEARS, metavar="YEAR",
                         help=f"NeurIPS years to read (default: {YEARS[0]}-{YEARS[-1]})")
     parser.add_argument("--top", type=int, default=8, metavar="N", help="results to show (default: 8)")
-    parser.add_argument("--neighbours", type=int, default=15, metavar="K",
-                        help="nearest neighbours per paper in the graph (default: 15)")
-    parser.add_argument("--threshold", type=float, default=0.85, metavar="S",
-                        help="similarity an edge needs to count (default: 0.85)")
+    parser.add_argument("--threshold", type=float, default=0.875, metavar="S",
+                        help="similarity two papers need to be linked (default: 0.875)")
     parser.add_argument("--min-size", type=int, default=60, metavar="N",
                         help="smallest cluster to report (default: 60)")
     parser.add_argument("--cache", type=Path, default=default_cache(), metavar="PATH",
@@ -378,6 +377,6 @@ if __name__ == "__main__":
     if args.query:  # the embeddings are paid for, so searching them is free
         show(df, X, key, " ".join(args.query), args.top)
     else:
-        pct = topics(df, X, args.neighbours, args.threshold, args.min_size)
+        pct = topics(df, X, args.threshold, args.min_size)
         report(pct, df.groupby("year").size())
         plot(pct, Path(__file__).with_name("neurips_topics.png"), len(df))
