@@ -1,11 +1,12 @@
 # Examples
 
-Both scripts declare their dependencies inline (PEP 723), so they run from
+The scripts declare their dependencies inline (PEP 723), so they run from
 anywhere with [uv](https://docs.astral.sh/uv/) and nothing pre-installed:
 
 ```bash
 uv run examples/quotes_analysis.py
 uv run examples/compare.py --repeat 5
+uv run examples/neurips_topics.py
 ```
 
 Set `LIGHTPANDA_BIN=/path/to/lightpanda` to run against a local browser build
@@ -62,3 +63,154 @@ Median of 5 runs on a Linux laptop (Core Ultra 7 258V, performance CPU profile):
 drags a full Chrome (plus a chromedriver download and version matching) along
 for the ride; Lightpanda gets the same data from a single `pip install`, in
 about half the time and ~35× less memory. The script writes `compare.png`.
+
+## `neurips_topics.py` — find what a field started working on, with nothing told to it
+
+[neurips.cc/virtual/2025/papers.html](https://neurips.cc/virtual/2025/papers.html)
+lists every accepted paper and `requests` gets none of them: 800 KB of scripts
+around an empty card list and a `<noscript>` reading *"Enable Javascript in your
+browser to see the papers page"*.
+
+```python
+soup = BeautifulSoup(requests.get("https://neurips.cc/virtual/2025/papers.html").text)
+len(soup.select(".myCard"))   # 0
+```
+
+Rendering it is not enough either. The page fetches a 27 MB index, keeps all
+5858 papers in a JavaScript array, and only ever builds 400 cards from it, so a
+scraper that reads the DOM still sees a seventh of the conference. Lightpanda
+reads the array:
+
+```python
+async with AsyncBrowser(args=["--http-timeout", "180000"]) as browser:   # the index is 27 MB
+    async with browser.session() as page:
+        await page.goto(url=f"https://neurips.cc/virtual/{year}/papers.html")
+        await page.wait_for_script(script="typeof allPapers !== 'undefined' && allPapers.length > 0")
+        rows = await page.evaluate(script="return allPapers.map(p => [p.title, p.abstract, p.url])")
+```
+
+One browser process per year, five years at once, about a minute for **19,219
+papers with abstracts**. (Several sessions inside one process contend badly on
+this workload and most of them fail; separate processes are both reliable and
+faster.)
+
+Those get embedded once, and then **each year is clustered on its own** by
+Chinese Whispers: link every pair of papers alike enough to be worth linking,
+and let each paper repeatedly adopt the weighted-majority topic of whatever it
+is linked to. No number of clusters is chosen anywhere.
+
+Clustering the years together would average a topic against the years it did not
+exist in, and lose the ones that only appeared recently. So every year nominates
+its own topics, near-duplicates are merged, and the centre of each surviving
+topic then labels every paper in every year. That last step is what makes a
+topic's share comparable across time. Each topic is named by the phrases its
+papers use far more than the rest of the conference does.
+
+Nothing supplies a topic list. This is the whole output:
+
+```
+198 topics over all years, 69 after merging duplicates
+
+year                                           2021  2022  2023  2024  2025
+reasoning, models llms, large language models  0.43  0.90  1.84  4.30  8.19
+harmful, safety, attack                        0.04  0.45  0.75  2.31  2.66
+video generation, denoising, diffusion models  0.00  0.24  0.25  0.90  1.09
+visual tokens, mllms, vision language          0.00  0.10  0.25  0.57  0.85
+vision transformers, vits, self attention      2.87  2.00  0.86  0.95  0.43
+domain, generalization, target                 2.57  2.51  1.48  0.93  0.43
+low rank, matrix, matrices                     2.23  1.27  1.12  0.62  0.34
+meta learning, shot, task                      1.67  0.93  0.59  0.15  0.12
+```
+
+![neurips_topics.png](neurips_topics.png)
+
+Passing a query searches the same embeddings by meaning instead, which costs
+nothing extra once they exist:
+
+```
+$ uv run examples/neurips_topics.py "making language models reason step by step"
+
+  0.87  2022  Chain-of-Thought Prompting Elicits Reasoning in Large Language Models
+  0.86  2023  Why think step by step? Reasoning emerges from the locality of experience
+  0.85  2022  Large Language Models are Zero-Shot Reasoners
+```
+
+Nothing told it the phrase "chain of thought". It also marks any hit that shares
+no word at all with the query, which is where the difference from `grep` shows:
+asking for *"teaching machines to see the world in three dimensions"* returns
+*"Multistable Shape from Shading Emerges from Patch Diffusion"*, with not one
+word in common.
+
+### Why clustering and not counting
+
+Four other ways of turning embeddings into a number were tried on these same
+19,219 papers, and all of them fail:
+
+| approach | result |
+|---|---|
+| mean similarity to a topic, per year | GANs move 0.002 over five years while their share collapses 7× |
+| forced nearest-topic assignment | claims two thirds of NeurIPS 2021 was adversarial robustness |
+| cutoff fitted to phrase labels | admits 6.6× too many papers; every trend flattens |
+| year-to-year corpus similarity | 2025 looks *more* like the past than 2022 did, a corpus-size artifact |
+
+They share a cause. Cosine similarities here sit in a narrow band, roughly 0.65
+to 0.90, so anything that compares a paper against a *global* bar drowns in the
+19,000 papers that are not about the topic. Chinese Whispers never asks that
+question. It only asks which papers are near each other, and relative
+neighbourhood structure survives the compression intact.
+
+One parameter remains, `--threshold`, deciding how alike two papers must be to
+be linked at all. Swept across the five per-year clusterings:
+
+| threshold | topics found | after merging | largest | with 60+ papers |
+|---|---|---|---|---|
+| 0.855 | 225 | 59 | 10.2% | 59 |
+| 0.865 | 225 | 62 | 6.9% | 61 |
+| **0.875** | **198** | **69** | **5.9%** | **67** |
+| 0.885 | 124 | 47 | 5.8% | 47 |
+| 0.895 | 59 | 30 | 7.2% | 30 |
+
+Too low and separate topics run together, so the largest swells to a tenth of
+the conference. Too high and papers stop being linked at all, so fewer topics
+are found in the first place: 124 at 0.885, then 59. 0.875 yields the most
+substantial topics while keeping the largest small.
+
+Labelling every paper by its nearest topic is safe here only because the topics
+came from the corpus. An earlier version of this example tried the same
+assignment with six hand-written topics and reported that two thirds of
+NeurIPS 2021 was about adversarial robustness, which was simply the bucket
+catching everything else. With 69 topics the papers themselves produced, the
+largest holds 4% of the corpus and that distortion is gone.
+
+The topics are reproducible in character rather than identical. Rerun against
+different embeddings and reasoning, safety and vision transformers reliably
+appear, while the precise split between adjacent topics moves.
+
+**On dlib**, which has a well-known Chinese Whispers implementation: it is not
+needed here. Building the graph is numpy work either way and takes 2.5 s; the
+propagation itself is 0.88 s in plain Python against 0.38 s in dlib's C++. Half
+a second does not pay for a source build needing CMake and a C++ toolchain, and
+writing the loop out means the example can show the algorithm rather than hide
+it behind a call. (dlib's own all-in-one `chinese_whispers_clustering`, which
+builds edges itself, is far slower still — about 80× — because it does the
+pairwise comparison in Python objects rather than in numpy.)
+
+### Which model
+
+Ranking the papers that genuinely match a phrase to the top, over a
+1,250-paper sample:
+
+| model | AUC | to embed 1,250 papers |
+|---|---:|---|
+| `gemini-embedding-2` | 0.958 | one API call per 100, needs a key |
+| `bge-base-en-v1.5` (ONNX) | 0.923 | 481 s on CPU |
+| **`bge-small-en-v1.5` (ONNX)** — the keyless default | **0.909** | **130 s on CPU** |
+| `all-MiniLM-L6-v2` (ONNX) | 0.854 | 22 s on CPU |
+| `potion-base-32M` (model2vec, static) | 0.844 | 0.4 s |
+| `potion-base-8M` (model2vec, static) | 0.790 | 0.5 s |
+
+Only the first needs a network and none need a GPU. `gemini-embedding-001`
+scores the same as `-2` within noise, but it is the legacy model. With a key the
+whole corpus embeds in about twenty seconds; without one it takes considerably
+longer, once, and the 27 MB cache under `~/.cache/neurips_topics` makes every
+later run instant.

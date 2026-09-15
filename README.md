@@ -137,9 +137,12 @@ browser's tools change, the Python methods change with them.
 ## Examples
 
 [`examples/`](examples/) scrapes a JavaScript-rendered site that `requests`
-cannot read, analyses the result with pandas/matplotlib, and measures the same
-job against Selenium + headless Chrome (100 quotes in ~3 s / 35 MB vs ~6 s /
-1.2 GB, median of 5 runs). Each script runs standalone: `uv run examples/quotes_analysis.py`.
+cannot read, analyses the result with pandas/matplotlib, measures the same job
+against Selenium + headless Chrome (100 quotes in ~3 s / 35 MB vs ~6 s / 1.2 GB,
+median of 5 runs), and reads five years of NeurIPS — 19,219 paper abstracts that
+never appear in the HTML at all — then clusters them to find what the field
+started working on.
+Each script runs standalone: `uv run examples/quotes_analysis.py`.
 
 ## License
 
