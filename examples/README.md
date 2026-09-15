@@ -159,22 +159,21 @@ to 0.90, so anything that compares a paper against a *global* bar drowns in the
 question. It only asks which papers are near each other, and relative
 neighbourhood structure survives the compression intact.
 
-One parameter remains, `--threshold`, and it decides how alike two papers must
-be to be linked at all. It is worth seeing what it does, because the useful
-range is narrow:
+One parameter remains, `--threshold`, deciding how alike two papers must be to
+be linked at all. Swept across the five per-year clusterings:
 
-| threshold | edges | clusters | largest | 60+ | covered |
-|---|---|---|---|---|---|
-| 0.850 | 905,099 | 289 | 18.7% | 31 | 94% |
-| 0.860 | 520,105 | 671 | 16.8% | 52 | 88% |
-| 0.870 | 284,891 | 1496 | 10.6% | 56 | 73% |
-| **0.875** | **206,780** | **2149** | **5.4%** | **61** | **65%** |
-| 0.880 | 147,231 | 3041 | 6.9% | 58 | 55% |
+| threshold | topics found | after merging | largest | with 60+ papers |
+|---|---|---|---|---|
+| 0.855 | 225 | 59 | 10.2% | 59 |
+| 0.865 | 225 | 62 | 6.9% | 61 |
+| **0.875** | **198** | **69** | **5.9%** | **67** |
+| 0.885 | 124 | 47 | 5.8% | 47 |
+| 0.895 | 59 | 30 | 7.2% | 30 |
 
-Too low and the graph percolates: at 0.850 a single blob swallows a fifth of the
-conference. Too high and it falls apart into fragments nobody is linked to.
-0.875 is where the largest cluster is smallest while most papers still have
-company.
+Too low and separate topics run together, so the largest swells to a tenth of
+the conference. Too high and papers stop being linked at all, so fewer topics
+are found in the first place: 124 at 0.885, then 59. 0.875 yields the most
+substantial topics while keeping the largest small.
 
 Labelling every paper by its nearest topic is safe here only because the topics
 came from the corpus. An earlier version of this example tried the same
