@@ -125,7 +125,7 @@ class SessionMethods:
             selector: Optional CSS selector. When set, dump only that element's outerHTML.
             backend_node_id: Optional backend node ID. When set, dump only that node's outerHTML. 0 is treated as omitted.
             max_bytes: Optional soft cap on output size in bytes. Content is truncated at a UTF-8 boundary and a short '[truncated]' marker is appended past the cap.
-            strip: Optional. Omit element groups from the output: `js` (script, noscript, script preloads), `css` (style, stylesheet links), `ui` (css plus img, picture, video, audio, svg, canvas, iframe), `invisible` (elements an author rule or inline style sets to display:none). {"js":true,"css":true} keeps a page dump small.
+            strip: Optional. Omit element groups from the output: `js` (script, noscript, script preloads), `css` (style, stylesheet links), `ui` (css plus img, picture, video, audio, svg, canvas, iframe), `invisible` (elements an author rule or inline style sets to display:none), `shell` (nav, aside, dialog, page-level header/footer and the matching landmark roles; skipped when that would drop most of the text), `clutter` (keep only the main content, in the manner of reader modes; includes `shell` and `invisible`, and falls back to `shell` when it finds too little). {"js":true,"css":true} keeps a page dump small.
             url: Optional URL to navigate to before dumping.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
@@ -147,17 +147,18 @@ class SessionMethods:
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return self.call("links", limit=limit, url=url, timeout=timeout)
-    def markdown(self, *, selector: str | None = None, backend_node_id: int | None = None, max_bytes: int | None = None, url: str | None = None, timeout: int | None = None) -> Any:
+    def markdown(self, *, selector: str | None = None, backend_node_id: int | None = None, max_bytes: int | None = None, strip: dict | None = None, url: str | None = None, timeout: int | None = None) -> Any:
         """Render the page (or a subtree) as markdown. Scope with `selector` or `backendNodeId` to read just the relevant region — full-page markdown is the last resort. Use `maxBytes` to cap long pages.
 
         Args:
             selector: Optional CSS selector. Render markdown for just that element's subtree.
             backend_node_id: Optional backend node ID. Render markdown for just that node's subtree. 0 is treated as omitted.
             max_bytes: Optional soft cap on output size in bytes. Content is truncated at a UTF-8 boundary and a short '[truncated]' marker is appended past the cap.
+            strip: Optional. Omit element groups from the output; same groups as the html tool's strip. `shell` (page chrome by markup) and `clutter` (keep only the main content, in the manner of reader modes) are the ones that matter for reading; `ui` also drops images.
             url: Optional URL to navigate to before rendering.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
-        return self.call("markdown", selector=selector, backend_node_id=backend_node_id, max_bytes=max_bytes, url=url, timeout=timeout)
+        return self.call("markdown", selector=selector, backend_node_id=backend_node_id, max_bytes=max_bytes, strip=strip, url=url, timeout=timeout)
     def node_details(self, *, backend_node_id: int) -> Any:
         """Details for a node by backendNodeId: a ready-to-use CSS `selector` that resolves to the node (the first match, as click/fill resolve it), plus tag, role, name, interactivity, disabled, value, input type, placeholder, href, id, class, checked, select options. The canonical way to turn a tree backendNodeId into a CSS selector.
 
@@ -174,7 +175,7 @@ class SessionMethods:
             backend_node_id: Optional backend node ID of the element to target. Defaults to the document when neither selector nor backendNodeId is provided; 0 is treated as omitted.
         """
         return self.call("press", key=key, selector=selector, backend_node_id=backend_node_id)
-    def screenshot(self, *, path: str | None = None, selector: str | None = None, backend_node_id: int | None = None, full_page: bool | None = None, url: str | None = None, timeout: int | None = None) -> Any:
+    def screenshot(self, *, path: str | None = None, selector: str | None = None, backend_node_id: int | None = None, full_page: bool | None = None, strip: dict | None = None, url: str | None = None, timeout: int | None = None) -> Any:
         """Render the page, or one node, as a PNG: the text layout Lightpanda computes, not a pixel-accurate browser rendering (no images, fonts or CSS colours). With `path`, writes the file at full size and returns its location; without it, returns the image inline where the client can display one, at most 1280px wide and 4096px tall. Use it to see spatial layout; read content with `markdown`/`tree`.
 
         Args:
@@ -182,15 +183,16 @@ class SessionMethods:
             selector: Optional CSS selector. When set, render only that element.
             backend_node_id: Optional backend node ID. When set, render only that node. 0 is treated as omitted.
             full_page: Render the whole content height instead of one viewport. Defaults to false.
+            strip: Optional. Omit element groups from the render; same groups as the html tool's strip (`js`, `css`, `ui`, `invisible`, `shell`, `clutter`).
             url: Optional URL to navigate to before rendering.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
-        return self.call("screenshot", path=path, selector=selector, backend_node_id=backend_node_id, full_page=full_page, url=url, timeout=timeout)
+        return self.call("screenshot", path=path, selector=selector, backend_node_id=backend_node_id, full_page=full_page, strip=strip, url=url, timeout=timeout)
     def scroll(self, *, backend_node_id: int | None = None, x: int | None = None, y: int | None = None) -> Any:
         """Scroll the page or a specific element. Returns the scroll position and current page URL and title.
 
         Args:
-            backend_node_id: Optional: The backend node ID of the element to scroll. If omitted (or 0), scrolls the window.
+            backend_node_id: Optional: The backend node ID of the element to scroll. If the element is not itself a scroll container, its nearest scrollable ancestor is scrolled instead. If omitted (or 0), scrolls the window.
             x: Optional: The horizontal scroll offset.
             y: Optional: The vertical scroll offset.
         """
@@ -378,7 +380,7 @@ class AsyncSessionMethods:
             selector: Optional CSS selector. When set, dump only that element's outerHTML.
             backend_node_id: Optional backend node ID. When set, dump only that node's outerHTML. 0 is treated as omitted.
             max_bytes: Optional soft cap on output size in bytes. Content is truncated at a UTF-8 boundary and a short '[truncated]' marker is appended past the cap.
-            strip: Optional. Omit element groups from the output: `js` (script, noscript, script preloads), `css` (style, stylesheet links), `ui` (css plus img, picture, video, audio, svg, canvas, iframe), `invisible` (elements an author rule or inline style sets to display:none). {"js":true,"css":true} keeps a page dump small.
+            strip: Optional. Omit element groups from the output: `js` (script, noscript, script preloads), `css` (style, stylesheet links), `ui` (css plus img, picture, video, audio, svg, canvas, iframe), `invisible` (elements an author rule or inline style sets to display:none), `shell` (nav, aside, dialog, page-level header/footer and the matching landmark roles; skipped when that would drop most of the text), `clutter` (keep only the main content, in the manner of reader modes; includes `shell` and `invisible`, and falls back to `shell` when it finds too little). {"js":true,"css":true} keeps a page dump small.
             url: Optional URL to navigate to before dumping.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
@@ -400,17 +402,18 @@ class AsyncSessionMethods:
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return await self.call("links", limit=limit, url=url, timeout=timeout)
-    async def markdown(self, *, selector: str | None = None, backend_node_id: int | None = None, max_bytes: int | None = None, url: str | None = None, timeout: int | None = None) -> Any:
+    async def markdown(self, *, selector: str | None = None, backend_node_id: int | None = None, max_bytes: int | None = None, strip: dict | None = None, url: str | None = None, timeout: int | None = None) -> Any:
         """Render the page (or a subtree) as markdown. Scope with `selector` or `backendNodeId` to read just the relevant region — full-page markdown is the last resort. Use `maxBytes` to cap long pages.
 
         Args:
             selector: Optional CSS selector. Render markdown for just that element's subtree.
             backend_node_id: Optional backend node ID. Render markdown for just that node's subtree. 0 is treated as omitted.
             max_bytes: Optional soft cap on output size in bytes. Content is truncated at a UTF-8 boundary and a short '[truncated]' marker is appended past the cap.
+            strip: Optional. Omit element groups from the output; same groups as the html tool's strip. `shell` (page chrome by markup) and `clutter` (keep only the main content, in the manner of reader modes) are the ones that matter for reading; `ui` also drops images.
             url: Optional URL to navigate to before rendering.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
-        return await self.call("markdown", selector=selector, backend_node_id=backend_node_id, max_bytes=max_bytes, url=url, timeout=timeout)
+        return await self.call("markdown", selector=selector, backend_node_id=backend_node_id, max_bytes=max_bytes, strip=strip, url=url, timeout=timeout)
     async def node_details(self, *, backend_node_id: int) -> Any:
         """Details for a node by backendNodeId: a ready-to-use CSS `selector` that resolves to the node (the first match, as click/fill resolve it), plus tag, role, name, interactivity, disabled, value, input type, placeholder, href, id, class, checked, select options. The canonical way to turn a tree backendNodeId into a CSS selector.
 
@@ -427,7 +430,7 @@ class AsyncSessionMethods:
             backend_node_id: Optional backend node ID of the element to target. Defaults to the document when neither selector nor backendNodeId is provided; 0 is treated as omitted.
         """
         return await self.call("press", key=key, selector=selector, backend_node_id=backend_node_id)
-    async def screenshot(self, *, path: str | None = None, selector: str | None = None, backend_node_id: int | None = None, full_page: bool | None = None, url: str | None = None, timeout: int | None = None) -> Any:
+    async def screenshot(self, *, path: str | None = None, selector: str | None = None, backend_node_id: int | None = None, full_page: bool | None = None, strip: dict | None = None, url: str | None = None, timeout: int | None = None) -> Any:
         """Render the page, or one node, as a PNG: the text layout Lightpanda computes, not a pixel-accurate browser rendering (no images, fonts or CSS colours). With `path`, writes the file at full size and returns its location; without it, returns the image inline where the client can display one, at most 1280px wide and 4096px tall. Use it to see spatial layout; read content with `markdown`/`tree`.
 
         Args:
@@ -435,15 +438,16 @@ class AsyncSessionMethods:
             selector: Optional CSS selector. When set, render only that element.
             backend_node_id: Optional backend node ID. When set, render only that node. 0 is treated as omitted.
             full_page: Render the whole content height instead of one viewport. Defaults to false.
+            strip: Optional. Omit element groups from the render; same groups as the html tool's strip (`js`, `css`, `ui`, `invisible`, `shell`, `clutter`).
             url: Optional URL to navigate to before rendering.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
-        return await self.call("screenshot", path=path, selector=selector, backend_node_id=backend_node_id, full_page=full_page, url=url, timeout=timeout)
+        return await self.call("screenshot", path=path, selector=selector, backend_node_id=backend_node_id, full_page=full_page, strip=strip, url=url, timeout=timeout)
     async def scroll(self, *, backend_node_id: int | None = None, x: int | None = None, y: int | None = None) -> Any:
         """Scroll the page or a specific element. Returns the scroll position and current page URL and title.
 
         Args:
-            backend_node_id: Optional: The backend node ID of the element to scroll. If omitted (or 0), scrolls the window.
+            backend_node_id: Optional: The backend node ID of the element to scroll. If the element is not itself a scroll container, its nearest scrollable ancestor is scrolled instead. If omitted (or 0), scrolls the window.
             x: Optional: The horizontal scroll offset.
             y: Optional: The vertical scroll offset.
         """
