@@ -6,7 +6,7 @@ anywhere with [uv](https://docs.astral.sh/uv/) and nothing pre-installed:
 ```bash
 uv run examples/quotes_analysis.py
 uv run examples/compare.py --repeat 5
-uv run examples/neurips_trends.py
+uv run examples/neurips_topics.py
 ```
 
 Set `LIGHTPANDA_BIN=/path/to/lightpanda` to run against a local browser build
@@ -64,12 +64,12 @@ drags a full Chrome (plus a chromedriver download and version matching) along
 for the ride; Lightpanda gets the same data from a single `pip install`, in
 about half the time and ~35× less memory. The script writes `compare.png`.
 
-## `neurips_trends.py` — five years of an ML conference, from a site with no HTML
+## `neurips_topics.py` — find what a field started working on, with nothing told to it
 
 [neurips.cc/virtual/2025/papers.html](https://neurips.cc/virtual/2025/papers.html)
-lists every accepted paper, and `requests` gets none of them: 800 KB of scripts
-wrapped around an empty card list and a `<noscript>` reading *"Enable Javascript
-in your browser to see the papers page"*.
+lists every accepted paper and `requests` gets none of them: 800 KB of scripts
+around an empty card list and a `<noscript>` reading *"Enable Javascript in your
+browser to see the papers page"*.
 
 ```python
 soup = BeautifulSoup(requests.get("https://neurips.cc/virtual/2025/papers.html").text)
@@ -77,7 +77,7 @@ len(soup.select(".myCard"))   # 0
 ```
 
 Rendering it is not enough either. The page fetches a 27 MB index, keeps all
-5858 papers in a JavaScript array, and only ever builds 400 cards from it — so a
+5858 papers in a JavaScript array, and only ever builds 400 cards from it, so a
 scraper that reads the DOM still sees a seventh of the conference. Lightpanda
 reads the array:
 
@@ -89,114 +89,82 @@ async with AsyncBrowser(args=["--http-timeout", "180000"]) as browser:   # the i
         rows = await page.evaluate(script="return allPapers.map(p => [p.title, p.abstract, p.url])")
 ```
 
-One browser process per year, five years at once, about 100 seconds for **19,219
+One browser process per year, five years at once, about a minute for **19,219
 papers with abstracts**. (Several sessions inside one process contend badly on
 this workload and most of them fail; separate processes are both reliable and
 faster.)
 
-Nothing then tells it what to look for. It counts every 1-to-3 word phrase in
-the corpus and ranks them by how much their share grew or shrank, which takes a
-couple of seconds:
+Those get embedded once and clustered by **Chinese Whispers**: every paper
+starts as its own topic, then repeatedly adopts the weighted-majority topic of
+its nearest neighbours. No number of clusters is chosen, and a paper with no
+close neighbour simply stays on its own instead of being forced somewhere. Each
+cluster is then named by the phrases its papers use far more than the rest of
+the conference does.
+
+Nothing supplies a topic list. This is the whole output:
 
 ```
-year                    2021  2022  2023  2024  2025
-llms                     0.0   0.3   3.9  13.1  17.3
-foundation models        0.0   0.3   1.4   2.6   3.5
-large language model     0.0   0.2   1.2   1.9   3.1
-vlms                     0.0   0.0   0.3   1.5   2.9
-generative adversarial   1.5   1.1   0.7   0.3   0.2
-adversarial robustness   1.6   0.9   0.8   0.6   0.3
-deep neural              6.3   5.2   4.2   2.6   1.3
-nets                     1.4   0.7   0.4   0.3   0.2
+735 clusters, 88 with 60+ papers, 52% of papers in one
+
+year                                                         2021  2022  2023  2024  2025
+chain thought, mllms, vision language models                 0.00  0.00  0.22  0.37  1.62
+reasoning models, thinking, cot                              0.00  0.10  0.20  0.37  1.47
+reasoning, llm, large language                               0.13  0.17  0.36  1.06  2.80
+diffusion based, diffusion model, policies                   0.00  0.03  0.20  0.66  0.44
+adversarial robustness, adversarial training, perturbations  2.19  1.86  1.28  0.48  0.22
+invariance, ood, invariant                                   0.77  0.76  0.42  0.15  0.09
+imitation learning, cloning, demonstrations                  0.99  0.65  0.61  0.24  0.17
+federated learning, distributed, communication               2.06  1.69  1.31  1.10  0.43
 ```
 
-Every phrase that grew is about language models in some form. `llms` goes from
-0 to 1,012 of 5858 papers; `deep neural` falls from 6.3% and crosses it on the
-way down, in 2023.
+![neurips_topics.png](neurips_topics.png)
 
-Two filters get that out of the noise, and both are properties of the corpus
-rather than lists of words to disapprove of. Ranking by *ratio* instead of by
-absolute change is what excludes writing style, which drifted a long way here —
-`introduce` and `framework` each rose about 20 points, `proposed` and `consider`
-fell — without being a topic. And a phrase is kept only if it shows up in some
-paper's **title**: authors put topics in titles and never put prose there, which
-is what separates `3d gaussian splatting` from `advancements`. Measured over the
-whole corpus, topic phrases appear in titles about 15% of the time and prose
-phrases 0%. The cost is bare model names like `qwen2`, which appear in abstracts
-as baselines and almost never in a title.
-
-Asking which phrases *peak* in a single year is sharper still, because a peak is
-usually an event:
+Passing a query searches the same embeddings by meaning instead, which costs
+nothing extra once they exist:
 
 ```
-2021: networks deep, algorithms learning, learning learn, nets
-2022: sparsely, neural tangent kernel, constants, variational autoencoders
-2023: chatgpt, human visual, stable diffusion, diffusion probabilistic
-2024: 3d gaussian splatting, 3d gaussians, chat, mamba
-2025: r1, grpo, reasoning models, mllms
+$ uv run examples/neurips_topics.py "making language models reason step by step"
+
+  0.87  2022  Chain-of-Thought Prompting Elicits Reasoning in Large Language Models
+  0.86  2023  Why think step by step? Reasoning emerges from the locality of experience
+  0.85  2022  Large Language Models are Zero-Shot Reasoners
 ```
 
-From 2023 on that needs no interpretation. The two oldest years are weak for a
-structural reason: they are the edge of the window, so nothing can be shown
-rising into them, and what is distinctive about them is mostly what later went
-away.
+Nothing told it the phrase "chain of thought". It also marks any hit that shares
+no word at all with the query, which is where the difference from `grep` shows:
+asking for *"teaching machines to see the world in three dimensions"* returns
+*"Multistable Shape from Shading Emerges from Patch Diffusion"*, with not one
+word in common.
 
-![neurips_trends.png](neurips_trends.png)
+### Why clustering and not counting
 
-### Why the terms are not chosen by hand
+Four other ways of turning embeddings into a number were tried on these same
+19,219 papers, and all of them fail:
 
-An earlier version of this example charted six terms I picked myself: large
-language models, diffusion models, in-context learning, RLHF, graph neural
-networks, GANs. It made a prettier chart, covering more subfields and moving in
-both directions, and it was wrong in a way worth recording.
+| approach | result |
+|---|---|
+| mean similarity to a topic, per year | GANs move 0.002 over five years while their share collapses 7× |
+| forced nearest-topic assignment | claims two thirds of NeurIPS 2021 was adversarial robustness |
+| cutoff fitted to phrase labels | admits 6.6× too many papers; every trend flattens |
+| year-to-year corpus similarity | 2025 looks *more* like the past than 2022 did, a corpus-size artifact |
 
-Those six were chosen from what I already expected to have moved, then narrowed
-to the ones that moved most. Four that stayed flat (`transformers` 7.3% → 9.4%,
-`contrastive learning` 5.2% → 3.9%, `federated learning` 1.9% → 1.2%, `agents &
-tool use` 0.0% → 1.8%) were dropped for being boring. That is selecting on the
-outcome, and the cost is not just tidiness: the curated chart *hides* the
-strongest result. Letting the corpus nominate the terms says that everything
-which grew was language models in some form. Hand-picking across subfields was
-what made that look untrue.
+They share a cause. Cosine similarities here sit in a narrow band, roughly 0.65
+to 0.90, so anything that compares a paper against a *global* bar drowns in the
+19,000 papers that are not about the topic. Chinese Whispers never asks that
+question. It only asks which papers are near each other, and relative
+neighbourhood structure survives the compression intact.
 
-### Ranking by meaning
+Two parameters remain, `--neighbours` (15) and `--threshold` (0.85), but they
+shape the graph rather than draw a classification boundary, and the cluster
+count is stable from 0.80 to 0.87. The clusters are reproducible in character
+rather than identical: rerun against different embeddings and "reasoning, llm"
+and "federated learning" reliably appear, while the precise split between
+neighbouring clusters moves.
 
-This runs by default whenever it is cheap — a `GOOGLE_API_KEY` is set, or the
-cache already covers these papers — and `--no-semantic` turns it off. It embeds
-all 19,219 papers and ranks them against whichever term grew most, using a query
-the corpus supplies rather than one written here: the
-discovered term plus the phrases that keep it company, which here gave *llms,
-llm, large language models, capabilities llms, llm based, reasoning llms*.
+### Which model
 
-It only ranks. Turning a ranking into a share per year needs a threshold, and
-every threshold is a choice that decides the answer, so the chart stays on
-phrase counts and the embeddings do the thing they are reliable at. Ordering
-documents by similarity is that thing; deciding whether one document clears a
-bar is not.
-
-What it surfaces is the papers that read like the topic while using none of its
-words:
-
-```
-Ranked highest among papers that never use any of those words:
-  [2025] 0.79  Longer Context, Deeper Thinking: Uncovering the Role of Long-Context Ability in Reasoning
-  [2025] 0.79  Reasoning Models Sometimes Output Illegible Chains of Thought
-  [2022] 0.78  LogiGAN: Learning Logical Reasoning via Adversarial Pre-training
-```
-
-Which says something the counting missed. The papers that avoid the LLM
-vocabulary in 2025 are not stragglers, they are reasoning-model papers: the
-words moved on again, from `llms` to `reasoning models`, and a phrase count
-anchored on the old vocabulary cannot see it.
-
-Embeddings come from `gemini-embedding-2` when `GOOGLE_API_KEY` is set and from
-`bge-small-en-v1.5` locally otherwise, and are cached by paper URL so the cost
-is paid once. A cold run over all five years takes about a minute with a key
-and rather longer without one; the cache is around 27 MB and lives under
-`~/.cache/neurips_trends` unless `--cache` says otherwise.
-
-Which model does the work matters. Ranking the true phrase matches to the top,
-over the same 1,250-paper sample:
+Ranking the papers that genuinely match a phrase to the top, over a
+1,250-paper sample:
 
 | model | AUC | to embed 1,250 papers |
 |---|---:|---|
@@ -207,7 +175,8 @@ over the same 1,250-paper sample:
 | `potion-base-32M` (model2vec, static) | 0.844 | 0.4 s |
 | `potion-base-8M` (model2vec, static) | 0.790 | 0.5 s |
 
-Only the first needs a network and none need a GPU. The static models are
-effectively free and useless here: they score every year about the same and
-flatten the trend into a line. `all-MiniLM-L6-v2` is the pick if 130 seconds is
-too long to wait.
+Only the first needs a network and none need a GPU. `gemini-embedding-001`
+scores the same as `-2` within noise, but it is the legacy model. With a key the
+whole corpus embeds in about twenty seconds; without one it takes considerably
+longer, once, and the 27 MB cache under `~/.cache/neurips_topics` makes every
+later run instant.
