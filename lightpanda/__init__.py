@@ -24,6 +24,12 @@ For Playwright or Puppeteer code, ``CDPServer`` runs the browser's own
 Chrome DevTools Protocol server and hands you the endpoint to connect to
 (see its docs for an example). For Selenium, ``BiDiServer`` serves WebDriver
 BiDi the same way and hands you the ``command_executor`` URL.
+
+The browser can enforce ``robots.txt``, which is off by default. Pass
+``args=["--obey-robots"]`` to any of these, and a disallowed request fails
+with :class:`ToolError` instead of being sent. Note that the rule applies to
+every request, not only the page you asked for, so a permitted page whose
+assets sit under a disallowed path will load without them.
 """
 
 __docformat__ = "google"

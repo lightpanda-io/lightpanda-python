@@ -172,6 +172,7 @@ class Browser:
                 raising :class:`ProtocolError`.
             verbose: Let the browser's own logging through to stderr.
             args: Extra CLI flags for the spawned browser process, e.g.
+                ``["--obey-robots"]`` to enforce ``robots.txt``,
                 ``["--http-cache-dir", path]`` or cookie flags.
         """
         self._client = Client(binary=binary, env=env, timeout=timeout, verbose=verbose, args=args)
@@ -214,15 +215,18 @@ def run_script(
     env: dict[str, str] | None = None,
     binary: str | os.PathLike | None = None,
     timeout: float | None = None,
+    args: Sequence[str] = (),
 ) -> str:
     """Replay a saved lightpanda script (no LLM) and return its stdout.
 
     ``env`` entries (e.g. ``LP_*`` placeholder values) are added to the
-    child's environment. Raises :class:`ScriptError` on a non-zero exit.
+    child's environment. ``args`` are extra CLI flags for the browser, e.g.
+    ``["--obey-robots"]`` to enforce ``robots.txt``. Raises
+    :class:`ScriptError` on a non-zero exit.
     """
     path = Path(script)
     proc = subprocess.run(
-        [str(find_binary(binary)), "run", str(path)],
+        [str(find_binary(binary)), "run", *args, str(path)],
         env=os.environ | (env or {}),
         capture_output=True,
         text=True,

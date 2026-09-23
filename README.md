@@ -118,6 +118,33 @@ drive the page through `driver.browsing_context` and `driver.script` with an
 explicit context, created first as above. Pass `args=["--protocol", "cdp"]`
 to serve CDP on the same port as well.
 
+## Respecting robots.txt
+
+The browser can enforce `robots.txt` for you. It is off by default, matching
+the `lightpanda` binary's own default, and every wrapper takes browser flags
+through `args=`:
+
+```python
+Browser(args=["--obey-robots"])                    # also AsyncBrowser
+CDPServer(args=["--obey-robots"])                  # also BiDiServer, and the async twins
+run_script("saved.js", args=["--obey-robots"])
+```
+
+A request the site disallows then fails rather than being sent: a tool call
+raises `ToolError: navigation failed: RobotsBlocked`, and `run_script` raises
+`ScriptError`.
+
+One thing to know before turning it on, because it is easy to mistake for a
+bug: the rule is applied to **every** request, not just the page you asked for.
+Plenty of sites disallow the directory their own assets live in, so a page you
+are allowed to fetch can load with its scripts and styles missing, and render
+blank or empty. That is `robots.txt` being honoured, not a failure — the site
+is asking you not to fetch those files. If a page comes back strangely empty
+under `--obey-robots`, read the site's `robots.txt` before assuming otherwise.
+
+Whether a given scrape is acceptable is not a question `robots.txt` alone
+answers: a site's terms of service can forbid what its `robots.txt` permits.
+
 ## How the bindings work
 
 Every browser tool is a `Session` method, typed and documented in your IDE.
