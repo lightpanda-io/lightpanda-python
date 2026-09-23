@@ -80,7 +80,7 @@ class SessionMethods:
 
         Args:
             role: Optional ARIA role to match (e.g. 'button', 'link', 'textbox', 'checkbox').
-            name: Optional accessible name substring to match (case-insensitive).
+            name: Optional accessible name to match, case-insensitive: a substring, or a JavaScript regex literal such as /sign (in|up)/ (unanchored; flags i, m, s, u accepted; case-insensitive even without i, prefix (?-i) to make it case-sensitive).
         """
         return self.call("findElement", role=role, name=name)
     def get_cookies(self, *, url: str | None = None, all: bool | None = None) -> Any:
@@ -335,7 +335,7 @@ class AsyncSessionMethods:
 
         Args:
             role: Optional ARIA role to match (e.g. 'button', 'link', 'textbox', 'checkbox').
-            name: Optional accessible name substring to match (case-insensitive).
+            name: Optional accessible name to match, case-insensitive: a substring, or a JavaScript regex literal such as /sign (in|up)/ (unanchored; flags i, m, s, u accepted; case-insensitive even without i, prefix (?-i) to make it case-sensitive).
         """
         return await self.call("findElement", role=role, name=name)
     async def get_cookies(self, *, url: str | None = None, all: bool | None = None) -> Any:
