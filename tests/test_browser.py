@@ -119,7 +119,7 @@ def test_run_script(binary, fixture_url, tmp_path):
 
 def test_run_script_forwards_args(binary, tmp_path):
     # A flag the binary rejects proves `args` reaches it, without needing a network.
-    script = tmp_path / "visit.js"
+    script = tmp_path / "unused.js"
     script.write_text("const page = new Page();\n")
     with pytest.raises(ScriptError):
         run_script(script, binary=binary, args=["--not-a-real-flag"])
