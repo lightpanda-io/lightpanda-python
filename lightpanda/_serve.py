@@ -39,8 +39,9 @@ class _ServeProcess:
                 bundled in the package, then ``PATH``.
             env: Extra environment variables for the spawned process.
             verbose: Let the browser's own logging through to stderr.
-            args: Extra ``lightpanda serve`` flags; pass ``port=`` rather
-                than ``--port``.
+            args: Extra ``lightpanda serve`` flags, e.g.
+                ``["--obey-robots"]`` to enforce ``robots.txt``; pass
+                ``port=`` rather than ``--port``.
             port: Pin the listening port. Defaults to a free one.
         """
         self._proc, self._port = _spawn(

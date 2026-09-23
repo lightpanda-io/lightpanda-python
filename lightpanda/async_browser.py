@@ -163,9 +163,12 @@ async def run_script_async(
     env: dict[str, str] | None = None,
     binary: str | os.PathLike | None = None,
     timeout: float | None = None,
+    args: Sequence[str] = (),
 ) -> str:
     """Async variant of :func:`lightpanda.run_script` (runs in a worker thread)."""
-    return await asyncio.to_thread(run_script, script, env=env, binary=binary, timeout=timeout)
+    return await asyncio.to_thread(
+        run_script, script, env=env, binary=binary, timeout=timeout, args=args
+    )
 
 
 __all__ = ["AsyncBrowser", "AsyncSession", "run_script_async"]

@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from conftest import alive
-from lightpanda import Browser, LightpandaError, ToolError, run_script, client
+from lightpanda import Browser, LightpandaError, ScriptError, ToolError, run_script, client
 
 
 def test_goto_and_markdown(browser, fixture_url):
@@ -115,6 +115,14 @@ def test_run_script(binary, fixture_url, tmp_path):
     script = tmp_path / "visit.js"
     script.write_text('const page = new Page();\nawait page.goto("$LP_TEST_URL");\n')
     run_script(script, env={"LP_TEST_URL": f"{fixture_url}/index.html"}, binary=binary)
+
+
+def test_run_script_forwards_args(binary, tmp_path):
+    # A flag the binary rejects proves `args` reaches it, without needing a network.
+    script = tmp_path / "unused.js"
+    script.write_text("const page = new Page();\n")
+    with pytest.raises(ScriptError):
+        run_script(script, binary=binary, args=["--not-a-real-flag"])
 
 
 def test_find_binary_skips_own_console_script(tmp_path, monkeypatch):
