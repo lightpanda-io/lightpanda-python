@@ -27,6 +27,37 @@ from .errors import ScriptError, ToolError
 _SESSION_TOOLS = {"save", "session_new", "session_list", "session_close"}
 
 
+class PageResult(str):
+    """What a navigation or action answered: a sentence that also carries fields.
+
+    ``goto`` and the action tools describe what they did in prose — which
+    element was clicked, whether a new window took over — and separately
+    report where that left the page. Dropping either would lose something, so
+    this is the sentence, unchanged for printing and comparison, with the
+    fields as attributes:
+
+    ```python
+    r = page.goto(url="https://example.com/missing")
+    print(r)        # Navigated successfully. HTTP 404 Not Found.
+    r.http_status   # 404
+    ```
+
+    ``http_status`` is None before any response has arrived, ``title`` on a
+    document that has none.
+    """
+
+    url: str
+    http_status: int | None
+    title: str | None
+
+    def __new__(cls, text: str, page_state: dict):
+        self = super().__new__(cls, text)
+        self.url = page_state["url"]
+        self.http_status = page_state.get("httpStatus")
+        self.title = page_state.get("title") or None
+        return self
+
+
 def _snake(name: str) -> str:
     return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
 
@@ -116,6 +147,11 @@ class Session(SessionMethods):
         images = [base64.b64decode(part["data"]) for part in content if part.get("type") == "image"]
         if images:
             return images[0] if len(images) == 1 else images
+        # goto and the actions report where they left the page as fields too;
+        # older binaries send only the sentence, which still falls through.
+        page_state = result.get("structuredContent")
+        if page_state is not None:
+            return PageResult(text, page_state)
         try:
             return json.loads(text)
         except ValueError:

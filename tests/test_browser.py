@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from conftest import alive
-from lightpanda import Browser, LightpandaError, ScriptError, ToolError, run_script, client
+from lightpanda import Browser, LightpandaError, PageResult, ScriptError, ToolError, run_script, client
 
 
 def test_goto_and_markdown(browser, fixture_url):
@@ -17,6 +17,32 @@ def test_goto_and_markdown(browser, fixture_url):
     text = page.markdown()
     assert "Hello from the fixture" in text
     page.close()
+
+
+def test_page_result_carries_status(browser, fixture_url):
+    with browser.new_session() as page:
+        ok = page.goto(url=f"{fixture_url}/index.html")
+        if not isinstance(ok, PageResult):
+            pytest.skip("binary predates structuredContent on goto")
+
+        assert ok.startswith("Navigated successfully"), "the sentence is still the value"
+        assert ok.url == f"{fixture_url}/index.html"
+        assert ok.http_status == 200
+        assert ok.title == "Fixture Home"
+
+        # Read tools are untouched: no structuredContent to shadow the payload.
+        assert not isinstance(page.markdown(), PageResult)
+        assert isinstance(page.extract(schema={"headline": "#headline"}), dict)
+
+        missing = page.goto(url=f"{fixture_url}/nope.html")
+        assert missing.http_status == 404, "an error page is reachable without parsing prose"
+
+        # An action reports where it left the page, and keeps saying what it did.
+        page.goto(url=f"{fixture_url}/index.html")
+        clicked = page.click(selector=".item a")
+        assert clicked.startswith("Clicked element")
+        assert clicked.url == f"{fixture_url}/other.html"
+        assert clicked.http_status == 200
 
 
 def test_extract_dict_schema(browser, fixture_url):

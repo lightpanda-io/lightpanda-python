@@ -161,6 +161,18 @@ The bindings follow Lightpanda's development and the package version tracks
 browser releases — there is no backwards-compatibility guarantee: when the
 browser's tools change, the Python methods change with them.
 
+A tool returning JSON gives you the parsed value — `extract` a dict, `links`
+a list. `goto` and the actions answer with a sentence describing what they
+did, which also carries where it left the page, so a 404 is a field rather
+than something to find in prose:
+
+```python
+r = page.goto(url="https://example.com/missing")
+print(r)          # Navigated successfully. HTTP 404 Not Found.
+if r.http_status >= 400:
+    raise SystemExit(f"{r.url} is an error page, not content")
+```
+
 ## Examples
 
 [`examples/`](examples/) scrapes a JavaScript-rendered site that `requests`
