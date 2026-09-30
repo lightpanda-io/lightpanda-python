@@ -34,6 +34,10 @@ class AsyncSession(AsyncSessionMethods):
     """One isolated browsing context (own page, cookies, memory), async.
 
     Do not construct directly — use :meth:`AsyncBrowser.new_session`.
+
+    Same conventions as :class:`Session` — keyword-only actions in snake_case,
+    ``selector`` winning over ``backend_node_id``, :meth:`call` as the escape
+    hatch — with every method a coroutine to await.
     """
 
     def __init__(self, session: Session, executor: ThreadPoolExecutor):
