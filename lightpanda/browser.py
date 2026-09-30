@@ -80,6 +80,20 @@ class Session(SessionMethods):
     """One isolated browsing context (own page, cookies, memory).
 
     Do not construct directly — use :meth:`Browser.new_session`.
+
+    Browser actions are keyword-only methods, named in snake_case after the
+    browser's own action names: the ``waitForSelector`` action is
+    :meth:`wait_for_selector`, and its ``backendNodeId`` argument is
+    ``backend_node_id``.
+
+    Where a method accepts both ``selector`` and ``backend_node_id``, pass one
+    of the two. ``selector`` is preferred for reproducibility and wins when
+    both are given; ``backend_node_id`` takes the values returned by
+    :meth:`tree`, :meth:`links` or :meth:`find_element`.
+
+    :meth:`call` is the escape hatch that takes the action and argument names
+    exactly as the browser declares them. A failed action raises
+    :class:`ToolError`.
     """
 
     def __init__(self, browser: Browser, session_id: str):
