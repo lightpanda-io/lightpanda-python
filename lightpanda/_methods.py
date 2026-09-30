@@ -27,7 +27,7 @@ class SessionMethods:
         """Get buffered console.log/warn/error messages from the current page. Returns all messages since last call and clears the buffer."""
         return self.call("consoleLogs")
     def detect_forms(self, *, url: str | None = None, timeout: int | None = None) -> Any:
-        """Detect all forms on the page and return their structure including fields, types, and required status. If a url is provided, it navigates to that url first.
+        """List the forms on the page as JSON: each form's `backendNodeId`, `action`, `method` and `fields`, where each field has `backendNodeId`, `tagName`, `name`, `inputType`, `required`, `disabled`, and when present `value`, `placeholder` and select `options`. Use it before filling a form to see every field it expects. It returns no CSS selectors; get one per field with `nodeDetails` so the fill calls stay replayable. If a url is provided, it navigates there first.
 
         Args:
             url: Optional URL to navigate to before processing.
@@ -38,6 +38,7 @@ class SessionMethods:
         """Evaluate JavaScript in the current page context — an escape hatch for page-side logic the dedicated tools can't express; prefer `extract` for data and click/fill/etc. for actions. It runs in the page, so it cannot see the agent script's variables or builtins — interpolate any value into the `script` string. A bare trailing expression yields its value; top-level `await` and `return` are supported (the body then runs as an async function, so use `return` to produce a value). Objects and arrays return as JSON, so no `JSON.stringify` is needed. If a url is provided, it navigates there first. The `globalThis.lp` object exposes a Session-scoped bridge store: values written via `lp.foo = ...` auto-sync at end of evaluate, surviving navigation; values previously set via `/extract save=` or `/evaluate save=` appear as `lp.<name>`.
 
         Args:
+            script: JavaScript run in the page context. A bare trailing expression, or `return` with top-level `await`, is the result.
             url: Optional URL to navigate to before evaluating.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
             save: Optional bridge-store key. The evaluate's return value is stored under this name and re-exposed as `lp.<name>` to subsequent evaluates. Objects, arrays, and strings are serialized automatically — no JSON.stringify needed.
@@ -102,7 +103,7 @@ class SessionMethods:
         """Current page URL. The browser may already have a page loaded (command, replayed script) not visible in this conversation — call this before assuming nothing is loaded when the user references the current page/site. Also useful to verify a navigation or detect a redirect."""
         return self.call("getUrl")
     def goto(self, *, url: str, timeout: int | None = None, wait_until: str | None = None) -> Any:
-        """Navigate to a specified URL and load the page in memory so it can be reused later for info extraction.
+        """Navigate the current page to a URL. Returns a short status once `waitUntil` fires (default `load`), or a timeout notice; content rendered by post-load JavaScript may not be there yet (see `waitForState`). The page stays loaded for later reads and actions. To navigate and read in one call, pass `url` to `markdown`, `tree` or `html` instead; use `goto` when the next step is an action or `extract`.
 
         Args:
             url: The URL to navigate to, must be a valid URL.
@@ -131,7 +132,7 @@ class SessionMethods:
         """
         return self.call("html", selector=selector, backend_node_id=backend_node_id, max_bytes=max_bytes, strip=strip, url=url, timeout=timeout)
     def interactive_elements(self, *, url: str | None = None, timeout: int | None = None) -> Any:
-        """Extract interactive elements from the opened page. If a url is provided, it navigates to that url first.
+        """List every visible interactive element on the page as a JSON array: native controls, ARIA widgets, contenteditable regions, elements with event listeners, and focusable elements. Each entry has `backendNodeId`, `tagName`, `role`, `name`, `type` (why it counts as interactive), `tabIndex`, and when present `listeners`, `disabled`, `id`, `class`, `href`, `inputType`, `value`, `elementName` and `placeholder`. Use it to survey what can be acted on; to locate one element by role or name, `findElement` is cheaper. If a url is provided, it navigates there first.
 
         Args:
             url: Optional URL to navigate to before processing.
@@ -188,15 +189,16 @@ class SessionMethods:
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return self.call("screenshot", path=path, selector=selector, backend_node_id=backend_node_id, full_page=full_page, strip=strip, url=url, timeout=timeout)
-    def scroll(self, *, backend_node_id: int | None = None, x: int | None = None, y: int | None = None) -> Any:
-        """Scroll the page or a specific element. Returns the scroll position and current page URL and title.
+    def scroll(self, *, selector: str | None = None, backend_node_id: int | None = None, x: int | None = None, y: int | None = None) -> Any:
+        """Scroll the window, or an element's scroll container, to an absolute position; an omitted axis keeps its current offset. Target an element with a CSS selector (preferred for reproducibility) or a backendNodeId; omit both to scroll the window. Page scripts receive a `scroll` event, so content that loads on scroll (infinite feeds, lazy lists) may appear: read the page again afterwards, with `waitForState` if it is still loading. Returns the final scroll position and the current page URL and title.
 
         Args:
-            backend_node_id: Optional: The backend node ID of the element to scroll. If the element is not itself a scroll container, its nearest scrollable ancestor is scrolled instead. If omitted (or 0), scrolls the window.
+            selector: Optional: CSS selector of the element to scroll. Preferred over backendNodeId. If the element is not itself a scroll container, its nearest scrollable ancestor is scrolled instead.
+            backend_node_id: Optional: The backend node ID of the element to scroll. If the element is not itself a scroll container, its nearest scrollable ancestor is scrolled instead. If neither this nor selector is given (or it is 0), scrolls the window.
             x: Optional: The horizontal scroll offset.
             y: Optional: The vertical scroll offset.
         """
-        return self.call("scroll", backend_node_id=backend_node_id, x=x, y=y)
+        return self.call("scroll", selector=selector, backend_node_id=backend_node_id, x=x, y=y)
     def search(self, *, query: str, timeout: int | None = None) -> Any:
         """Run a web search and return results as markdown: a numbered list of {title, url, snippet}. Search tries brave, tavily, exa, then keenable in order, each when its API key (BRAVE_API_KEY, TAVILY_API_KEY, EXA_API_KEY or KEENABLE_API_KEY) is set; keenable also works without a key through its public endpoint (rate-limited per client IP). Prefer this over goto-ing google.com/search directly (Google blocks the browser on User-Agent/TLS). The browser does not navigate — to open a result, use `goto` with its URL.
 
@@ -224,7 +226,7 @@ class SessionMethods:
         """
         return self.call("setChecked", checked=checked, selector=selector, backend_node_id=backend_node_id)
     def structured_data(self, *, url: str | None = None, timeout: int | None = None) -> Any:
-        """Extract structured data (like JSON-LD, OpenGraph, etc) from the opened page. If a url is provided, it navigates to that url first.
+        """Page metadata as JSON: `jsonLd` (each JSON-LD block as a string), `openGraph`, `twitterCard`, `meta` and `links` (key/value lists), plus `alternate` (hreflang variants) and `linkHeaders` (relations from the HTTP Link header) when present. Empty sections come back as empty arrays. Use it for publisher-declared facts such as product price, article author or canonical URL before scraping the visible text for them. If a url is provided, it navigates there first.
 
         Args:
             url: Optional URL to navigate to before processing.
@@ -232,7 +234,7 @@ class SessionMethods:
         """
         return self.call("structuredData", url=url, timeout=timeout)
     def tree(self, *, url: str | None = None, timeout: int | None = None, backend_node_id: int | None = None, max_depth: int | None = None) -> Any:
-        """Simplified semantic DOM tree (role, name, value, backendNodeId per node). Pass `backendNodeId` to scope, `maxDepth` to limit depth.
+        """Semantic outline of the page as indented text: one node per line with its role, accessible name, value and backendNodeId, plus checked state and select options with the selected one marked. The default first read of an unfamiliar page; input and select values are already here, so no `nodeDetails` call is needed to read them. Pass `backendNodeId` to scope to a subtree and `maxDepth` to survey structure before going deeper. Read it again after any page-changing action, since the DOM it describes may have changed; use `nodeDetails` to turn a backendNodeId into a CSS selector for actions.
 
         Args:
             url: Optional URL to navigate to before fetching the semantic tree.
@@ -282,7 +284,7 @@ class AsyncSessionMethods:
         """Get buffered console.log/warn/error messages from the current page. Returns all messages since last call and clears the buffer."""
         return await self.call("consoleLogs")
     async def detect_forms(self, *, url: str | None = None, timeout: int | None = None) -> Any:
-        """Detect all forms on the page and return their structure including fields, types, and required status. If a url is provided, it navigates to that url first.
+        """List the forms on the page as JSON: each form's `backendNodeId`, `action`, `method` and `fields`, where each field has `backendNodeId`, `tagName`, `name`, `inputType`, `required`, `disabled`, and when present `value`, `placeholder` and select `options`. Use it before filling a form to see every field it expects. It returns no CSS selectors; get one per field with `nodeDetails` so the fill calls stay replayable. If a url is provided, it navigates there first.
 
         Args:
             url: Optional URL to navigate to before processing.
@@ -293,6 +295,7 @@ class AsyncSessionMethods:
         """Evaluate JavaScript in the current page context — an escape hatch for page-side logic the dedicated tools can't express; prefer `extract` for data and click/fill/etc. for actions. It runs in the page, so it cannot see the agent script's variables or builtins — interpolate any value into the `script` string. A bare trailing expression yields its value; top-level `await` and `return` are supported (the body then runs as an async function, so use `return` to produce a value). Objects and arrays return as JSON, so no `JSON.stringify` is needed. If a url is provided, it navigates there first. The `globalThis.lp` object exposes a Session-scoped bridge store: values written via `lp.foo = ...` auto-sync at end of evaluate, surviving navigation; values previously set via `/extract save=` or `/evaluate save=` appear as `lp.<name>`.
 
         Args:
+            script: JavaScript run in the page context. A bare trailing expression, or `return` with top-level `await`, is the result.
             url: Optional URL to navigate to before evaluating.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
             save: Optional bridge-store key. The evaluate's return value is stored under this name and re-exposed as `lp.<name>` to subsequent evaluates. Objects, arrays, and strings are serialized automatically — no JSON.stringify needed.
@@ -357,7 +360,7 @@ class AsyncSessionMethods:
         """Current page URL. The browser may already have a page loaded (command, replayed script) not visible in this conversation — call this before assuming nothing is loaded when the user references the current page/site. Also useful to verify a navigation or detect a redirect."""
         return await self.call("getUrl")
     async def goto(self, *, url: str, timeout: int | None = None, wait_until: str | None = None) -> Any:
-        """Navigate to a specified URL and load the page in memory so it can be reused later for info extraction.
+        """Navigate the current page to a URL. Returns a short status once `waitUntil` fires (default `load`), or a timeout notice; content rendered by post-load JavaScript may not be there yet (see `waitForState`). The page stays loaded for later reads and actions. To navigate and read in one call, pass `url` to `markdown`, `tree` or `html` instead; use `goto` when the next step is an action or `extract`.
 
         Args:
             url: The URL to navigate to, must be a valid URL.
@@ -386,7 +389,7 @@ class AsyncSessionMethods:
         """
         return await self.call("html", selector=selector, backend_node_id=backend_node_id, max_bytes=max_bytes, strip=strip, url=url, timeout=timeout)
     async def interactive_elements(self, *, url: str | None = None, timeout: int | None = None) -> Any:
-        """Extract interactive elements from the opened page. If a url is provided, it navigates to that url first.
+        """List every visible interactive element on the page as a JSON array: native controls, ARIA widgets, contenteditable regions, elements with event listeners, and focusable elements. Each entry has `backendNodeId`, `tagName`, `role`, `name`, `type` (why it counts as interactive), `tabIndex`, and when present `listeners`, `disabled`, `id`, `class`, `href`, `inputType`, `value`, `elementName` and `placeholder`. Use it to survey what can be acted on; to locate one element by role or name, `findElement` is cheaper. If a url is provided, it navigates there first.
 
         Args:
             url: Optional URL to navigate to before processing.
@@ -443,15 +446,16 @@ class AsyncSessionMethods:
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return await self.call("screenshot", path=path, selector=selector, backend_node_id=backend_node_id, full_page=full_page, strip=strip, url=url, timeout=timeout)
-    async def scroll(self, *, backend_node_id: int | None = None, x: int | None = None, y: int | None = None) -> Any:
-        """Scroll the page or a specific element. Returns the scroll position and current page URL and title.
+    async def scroll(self, *, selector: str | None = None, backend_node_id: int | None = None, x: int | None = None, y: int | None = None) -> Any:
+        """Scroll the window, or an element's scroll container, to an absolute position; an omitted axis keeps its current offset. Target an element with a CSS selector (preferred for reproducibility) or a backendNodeId; omit both to scroll the window. Page scripts receive a `scroll` event, so content that loads on scroll (infinite feeds, lazy lists) may appear: read the page again afterwards, with `waitForState` if it is still loading. Returns the final scroll position and the current page URL and title.
 
         Args:
-            backend_node_id: Optional: The backend node ID of the element to scroll. If the element is not itself a scroll container, its nearest scrollable ancestor is scrolled instead. If omitted (or 0), scrolls the window.
+            selector: Optional: CSS selector of the element to scroll. Preferred over backendNodeId. If the element is not itself a scroll container, its nearest scrollable ancestor is scrolled instead.
+            backend_node_id: Optional: The backend node ID of the element to scroll. If the element is not itself a scroll container, its nearest scrollable ancestor is scrolled instead. If neither this nor selector is given (or it is 0), scrolls the window.
             x: Optional: The horizontal scroll offset.
             y: Optional: The vertical scroll offset.
         """
-        return await self.call("scroll", backend_node_id=backend_node_id, x=x, y=y)
+        return await self.call("scroll", selector=selector, backend_node_id=backend_node_id, x=x, y=y)
     async def search(self, *, query: str, timeout: int | None = None) -> Any:
         """Run a web search and return results as markdown: a numbered list of {title, url, snippet}. Search tries brave, tavily, exa, then keenable in order, each when its API key (BRAVE_API_KEY, TAVILY_API_KEY, EXA_API_KEY or KEENABLE_API_KEY) is set; keenable also works without a key through its public endpoint (rate-limited per client IP). Prefer this over goto-ing google.com/search directly (Google blocks the browser on User-Agent/TLS). The browser does not navigate — to open a result, use `goto` with its URL.
 
@@ -479,7 +483,7 @@ class AsyncSessionMethods:
         """
         return await self.call("setChecked", checked=checked, selector=selector, backend_node_id=backend_node_id)
     async def structured_data(self, *, url: str | None = None, timeout: int | None = None) -> Any:
-        """Extract structured data (like JSON-LD, OpenGraph, etc) from the opened page. If a url is provided, it navigates to that url first.
+        """Page metadata as JSON: `jsonLd` (each JSON-LD block as a string), `openGraph`, `twitterCard`, `meta` and `links` (key/value lists), plus `alternate` (hreflang variants) and `linkHeaders` (relations from the HTTP Link header) when present. Empty sections come back as empty arrays. Use it for publisher-declared facts such as product price, article author or canonical URL before scraping the visible text for them. If a url is provided, it navigates there first.
 
         Args:
             url: Optional URL to navigate to before processing.
@@ -487,7 +491,7 @@ class AsyncSessionMethods:
         """
         return await self.call("structuredData", url=url, timeout=timeout)
     async def tree(self, *, url: str | None = None, timeout: int | None = None, backend_node_id: int | None = None, max_depth: int | None = None) -> Any:
-        """Simplified semantic DOM tree (role, name, value, backendNodeId per node). Pass `backendNodeId` to scope, `maxDepth` to limit depth.
+        """Semantic outline of the page as indented text: one node per line with its role, accessible name, value and backendNodeId, plus checked state and select options with the selected one marked. The default first read of an unfamiliar page; input and select values are already here, so no `nodeDetails` call is needed to read them. Pass `backendNodeId` to scope to a subtree and `maxDepth` to survey structure before going deeper. Read it again after any page-changing action, since the DOM it describes may have changed; use `nodeDetails` to turn a backendNodeId into a CSS selector for actions.
 
         Args:
             url: Optional URL to navigate to before fetching the semantic tree.
