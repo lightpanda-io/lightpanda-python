@@ -19,10 +19,10 @@ class SessionMethods:
         raise NotImplementedError
 
     def classify(self, *, questions: str | dict | list, selector: str | None = None) -> Any:
-        """Classify the page or an element subtree using TypeSafe System One (Jev). `questions` is a JSON array of categories (returns the one that fits), or a JSON object of questions keyed by the name each answer comes back under: `true` for a preset (isBlocked, isCaptcha, isConsentWall, isEmptyCatalog), a string for a yes/no question (returns its probability), or `{question, options}` for a choice. A missing answer is null.
+        """Classify the page or an element subtree using TypeSafe System One (Jev). `questions` is a JSON array of categories (returns the one that fits), or a JSON object of questions keyed by the name each answer comes back under: `true` for a preset (isBlocked, isCaptcha, isConsentWall, isEmptyCatalog, isErrorPage, isLoginWall, isPaywall, isUnsupportedBrowser, isLoading; an empty object `{}` asks all of them), a string for a yes/no question (returns its probability), or `{question, options}` for a choice. A missing answer is null.
 
         Args:
-            questions: JSON string: array of categories, or object of questions
+            questions: JSON string: array of categories, or object of questions (`{}` for every preset)
             selector: Optional CSS selector to classify a specific element subtree instead of the full page
         """
         return self.call("classify", questions=questions, selector=selector)
@@ -340,10 +340,10 @@ class AsyncSessionMethods:
         raise NotImplementedError
 
     async def classify(self, *, questions: str | dict | list, selector: str | None = None) -> Any:
-        """Classify the page or an element subtree using TypeSafe System One (Jev). `questions` is a JSON array of categories (returns the one that fits), or a JSON object of questions keyed by the name each answer comes back under: `true` for a preset (isBlocked, isCaptcha, isConsentWall, isEmptyCatalog), a string for a yes/no question (returns its probability), or `{question, options}` for a choice. A missing answer is null.
+        """Classify the page or an element subtree using TypeSafe System One (Jev). `questions` is a JSON array of categories (returns the one that fits), or a JSON object of questions keyed by the name each answer comes back under: `true` for a preset (isBlocked, isCaptcha, isConsentWall, isEmptyCatalog, isErrorPage, isLoginWall, isPaywall, isUnsupportedBrowser, isLoading; an empty object `{}` asks all of them), a string for a yes/no question (returns its probability), or `{question, options}` for a choice. A missing answer is null.
 
         Args:
-            questions: JSON string: array of categories, or object of questions
+            questions: JSON string: array of categories, or object of questions (`{}` for every preset)
             selector: Optional CSS selector to classify a specific element subtree instead of the full page
         """
         return await self.call("classify", questions=questions, selector=selector)

@@ -37,7 +37,7 @@ __docformat__ = "google"
 
 from .async_browser import AsyncBrowser, AsyncSession, run_script_async
 from .bidi import AsyncBiDiServer, BiDiServer
-from .browser import Browser, PageResult, Session, run_script
+from .browser import Browser, PageResult, PageVerdict, Session, run_script
 from .cdp import AsyncCDPServer, CDPServer
 from .errors import LightpandaError, ProcessError, ProtocolError, ScriptError, ToolError
 
@@ -45,6 +45,7 @@ __all__ = [
     "Browser",
     "Session",
     "PageResult",
+    "PageVerdict",
     "run_script",
     "AsyncBrowser",
     "AsyncSession",

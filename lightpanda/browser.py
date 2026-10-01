@@ -58,6 +58,76 @@ class PageResult(str):
         return self
 
 
+class PageVerdict:
+    """What :meth:`Session.judge` found: is this page worth reading?
+
+    Every preset of the ``classify`` tool, asked in one call. Each is a bool,
+    true when the model's probability reaches the threshold; ``scores`` keeps
+    the probabilities themselves (None where the model gave no answer). The
+    browser decides which presets there are: one added after this release
+    still appears in ``scores`` and as an attribute.
+
+    More than one can be true: a cookie banner can sit on top of a login wall,
+    and a bot block is usually an error page too. :attr:`reason` names the
+    strongest one.
+
+    The model is not deterministic, so the same page can score a little
+    differently from one call to the next, and a score near the threshold can
+    land on either side of it.
+
+    ```python
+    verdict = page.judge()
+    if not verdict.ok:
+        print("skipping:", verdict.reason)  # is_paywall
+    verdict.scores["is_blocked"]        # 0.03
+    ```
+    """
+
+    is_blocked: bool
+    """The page is behind a CAPTCHA, a Cloudflare challenge or a bot block."""
+    is_captcha: bool
+    """A CAPTCHA or human verification challenge covers the content."""
+    is_consent_wall: bool
+    """A cookie consent banner covers the content."""
+    is_empty_catalog: bool
+    """The page says no matching products were found."""
+    is_error_page: bool
+    """An error, such as page not found, stands in for the content."""
+    is_login_wall: bool
+    """A sign-in form or prompt stands in for the content."""
+    is_paywall: bool
+    """A subscription or payment prompt hides or cuts off the content."""
+    is_unsupported_browser: bool
+    """The site says this browser is unsupported, or that JavaScript must be
+    enabled: its scripts failed or rejected Lightpanda."""
+    is_loading: bool
+    """The page says it is still loading (spinners, placeholders, loading
+    text). A page that is blank while it loads says nothing, so this misses it."""
+    scores: dict[str, float | None]
+    """Each check's probability, keyed by its attribute name."""
+
+    def __init__(self, answers: dict, threshold: float):
+        self.scores = {_snake(preset): score for preset, score in answers.items()}
+        for attr, score in self.scores.items():
+            setattr(self, attr, score is not None and score >= threshold)
+
+    @property
+    def ok(self) -> bool:
+        """True when no check fired."""
+        return not any(getattr(self, attr) for attr in self.scores)
+
+    @property
+    def reason(self) -> str | None:
+        """The check that fired with the highest score, e.g. ``"is_paywall"``,
+        to answer "why skip this page?" in one word. None when :attr:`ok`."""
+        fired = [attr for attr in self.scores if getattr(self, attr)]
+        return max(fired, key=self.scores.__getitem__, default=None)
+
+    def __repr__(self) -> str:
+        fired = ", ".join(f"{attr}={self.scores[attr]}" for attr in self.scores if getattr(self, attr))
+        return f"PageVerdict({fired})"
+
+
 def _snake(name: str) -> str:
     return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
 
@@ -170,6 +240,18 @@ class Session(SessionMethods):
             return json.loads(text)
         except ValueError:
             return text
+
+    def judge(self, *, threshold: float = 0.5) -> PageVerdict:
+        """Judge whether the page is worth reading: blocked, a login wall, a
+        paywall, an error page and the rest of the ``classify`` presets, in a
+        single call.
+
+        Args:
+            threshold: The probability at which a check counts as true.
+        """
+        # An empty questions object asks the browser for every preset.
+        answers = self.call("classify", questions={})
+        return PageVerdict(answers, threshold)
 
     def _resolve(self, attr: str) -> str | None:
         """The tool name behind a snake_case public attribute, if any."""
