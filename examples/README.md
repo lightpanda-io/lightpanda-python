@@ -221,8 +221,8 @@ later run instant.
 A 200 response can still be a consent wall, a bot check or an empty search.
 `classify` asks TypeSafe's page model about the rendered page, so a single
 call per URL tells you whether the page is worth extracting from and what
-kind of page it is. One `questions` dict can mix presets, yes/no questions
-and a choice:
+kind of page it is. One `questions` dict can mix presets, yes/no questions,
+a choice and a score:
 
 ```python
 answers = page.classify(questions={
@@ -230,6 +230,8 @@ answers = page.classify(questions={
     "has_price": "Does the page show a price?",                       # yes/no -> probability
     "kind": {"question": "What kind of page is this?",
              "options": ["homepage", "listing", "product", "article", "search results", "login"]},
+    "value": {"question": "How much useful content would a scraper get from this page?",
+              "levels": ["none", "little", "plenty"]},   # -> {"score": 1.28, "level": "little", ...}
 })
 page.classify(questions=["software", "biology", "history"], selector="#bodyContent")  # -> "software"
 ```
@@ -244,23 +246,26 @@ if not verdict.ok:
 ```
 
 ```
-page                                          kind             price  flags
-quotes.toscrape.com/js/                       homepage          0.01  -
-books.toscrape.com/catalogue/a-light-in-the-  product           1.00  -
-en.wikipedia.org/wiki/Headless_browser        article           0.01  -
-news.ycombinator.com/login                    login             0.01  -
-en.wikipedia.org/w/index.php?search=xqzzzvqk  search results    0.01  isEmptyCatalog 0.99
-www.g2.com/                                   homepage          0.02  isBlocked 0.77
-www.yahoo.com/                                article           0.01  isConsentWall 0.70
+page                                          kind             price  value        flags
+quotes.toscrape.com/js/                       homepage          0.01  plenty 1.75  -
+books.toscrape.com/catalogue/a-light-in-the-  product           1.00  plenty 1.95  -
+en.wikipedia.org/wiki/Headless_browser        article           0.02  plenty 1.56  -
+news.ycombinator.com/login                    login             0.01  little 0.56  -
+en.wikipedia.org/w/index.php?search=xqzzzvqk  search results    0.01  none   0.41  isEmptyCatalog 0.99
+www.g2.com/                                   homepage          0.02  none   0.00  isBlocked 0.76
+www.yahoo.com/                                article           0.01  little 1.28  isConsentWall 0.69
 
 keep  quotes.toscrape.com/js/
 keep  books.toscrape.com/catalogue/a-light-in-the-
 keep  en.wikipedia.org/wiki/Headless_browser
 skip  news.ycombinator.com/login                    is_login_wall     PageVerdict(is_login_wall=0.95)
 skip  en.wikipedia.org/w/index.php?search=xqzzzvqk  is_empty_catalog  PageVerdict(is_empty_catalog=0.99)
-skip  www.g2.com/                                   is_error_page     PageVerdict(is_blocked=0.76, is_error_page=0.95)
+skip  www.g2.com/                                   is_error_page     PageVerdict(is_blocked=0.75, is_error_page=0.95)
 keep  www.yahoo.com/
 ```
+
+A score lands between its levels: Yahoo's consent page scores 1.28 on
+none/little/plenty, and `level` names the nearest one.
 
 The model is not deterministic, so expect the scores to move a little between
 runs, and a borderline flag to come and go. Some sites change too: Yahoo only
