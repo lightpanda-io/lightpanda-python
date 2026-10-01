@@ -7,6 +7,7 @@ anywhere with [uv](https://docs.astral.sh/uv/) and nothing pre-installed:
 uv run examples/quotes_analysis.py
 uv run examples/compare.py --repeat 5
 uv run examples/neurips_topics.py
+uv run examples/classify_pages.py   # needs TYPESAFE_API_KEY
 ```
 
 Set `LIGHTPANDA_BIN=/path/to/lightpanda` to run against a local browser build
@@ -214,3 +215,61 @@ scores the same as `-2` within noise, but it is the legacy model. With a key the
 whole corpus embeds in about twenty seconds; without one it takes considerably
 longer, once, and the 27 MB cache under `~/.cache/neurips_topics` makes every
 later run instant.
+
+## `classify_pages.py` — triage a crawl before scraping it
+
+A 200 response can still be a consent wall, a bot check or an empty search.
+`classify` asks TypeSafe's page model about the rendered page, so a single
+call per URL tells you whether the page is worth extracting from and what
+kind of page it is. One `questions` dict can mix presets, yes/no questions
+and a choice:
+
+```python
+answers = page.classify(questions={
+    "isBlocked": True, "isConsentWall": True, "isEmptyCatalog": True,  # presets
+    "has_price": "Does the page show a price?",                       # yes/no -> probability
+    "kind": {"question": "What kind of page is this?",
+             "options": ["homepage", "listing", "product", "article", "search results", "login"]},
+})
+page.classify(questions=["software", "biology", "history"], selector="#bodyContent")  # -> "software"
+```
+
+When all you need is the gate, `page.judge()` asks every preset in one call
+and answers with bools, keeping the probabilities in `scores`:
+
+```python
+verdict = page.judge()
+if not verdict.ok:
+    print("skip", verdict.reason)   # is_blocked
+```
+
+```
+page                                          kind             price  flags
+quotes.toscrape.com/js/                       homepage          0.01  -
+books.toscrape.com/catalogue/a-light-in-the-  product           1.00  -
+en.wikipedia.org/wiki/Headless_browser        article           0.02  -
+news.ycombinator.com/login                    login             0.01  -
+en.wikipedia.org/w/index.php?search=xqzzzvqk  search results    0.01  isEmptyCatalog 0.55
+www.g2.com/                                   homepage          0.02  isBlocked 0.77
+www.yahoo.com/                                article           0.01  isConsentWall 0.69
+
+keep  quotes.toscrape.com/js/
+keep  books.toscrape.com/catalogue/a-light-in-the-
+keep  en.wikipedia.org/wiki/Headless_browser
+skip  news.ycombinator.com/login                    is_login_wall     PageVerdict(is_login_wall=0.94)
+skip  en.wikipedia.org/w/index.php?search=xqzzzvqk  is_empty_catalog  PageVerdict(is_empty_catalog=0.56)
+skip  www.g2.com/                                   is_error_page     PageVerdict(is_blocked=0.75, is_error_page=0.95)
+skip  www.yahoo.com/                                is_consent_wall   PageVerdict(is_consent_wall=0.68)
+```
+
+The model is not deterministic, so expect the scores to move a little between
+runs, and a borderline flag such as the empty search's to come and go. Some
+sites change too: Yahoo only sometimes redirects to its consent page.
+
+Needs `TYPESAFE_API_KEY`, and a browser with the `classify` tool. Until a
+release ships both, the script installs this checkout rather than the PyPI
+package, so run it from here against a local browser build:
+
+```bash
+LIGHTPANDA_BIN=../browser/zig-out/bin/lightpanda uv run examples/classify_pages.py
+```
