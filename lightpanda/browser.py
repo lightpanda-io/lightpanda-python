@@ -90,7 +90,7 @@ class PageVerdict:
     is_consent_wall: bool
     """A cookie consent banner covers the content."""
     is_empty_catalog: bool
-    """The page says no matching products were found."""
+    """A search or filter found nothing: no results, no matches, 0 items."""
     is_error_page: bool
     """An error, such as page not found, stands in for the content."""
     is_login_wall: bool
