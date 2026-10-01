@@ -124,7 +124,8 @@ class AsyncBrowser:
 
     @property
     def tools(self) -> dict[str, dict]:
-        """Tool name → {description, schema}, as reported by the browser."""
+        """Tool name → {description, schema, output_schema}, as reported by
+        the browser. ``output_schema`` is None for tools that declare none."""
         if self._browser is None:
             raise LightpandaError("browser not started; use `async with` or `await start()`")
         return self._browser.tools

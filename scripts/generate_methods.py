@@ -4,7 +4,10 @@ Emits one concrete, annotated, documented method per browser tool, with the
 tool name and its parameters in snake_case, all forwarding to ``Session.call``
 (which maps them back to the schema's names). Each docstring carries the tool
 description and a Google-style ``Args:`` section from the schema's property
-descriptions, so IDEs and pdoc show what every argument means. Being real code, the methods are
+descriptions, so IDEs and pdoc show what every argument means. Tools that
+declare an ``outputSchema`` answer with ``structuredContent``, which
+``Session.call`` returns as a ``PageResult``, so those methods are annotated
+with it; the rest stay ``Any``. Being real code, the methods are
 visible to IDEs, type checkers, and pdoc alike. Run with a binary available:
 
     uv run --no-project python scripts/generate_methods.py
@@ -36,7 +39,10 @@ is the same surface with ``async def`` signatures.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .browser import PageResult
 '''
 
 CLASS_HEADER = '''\
@@ -94,7 +100,8 @@ def method_source(name: str, spec: dict, is_async: bool = False) -> str:
     call_args = ", ".join([f'"{name}"'] + forwards)
     prefix = "async def" if is_async else "def"
     await_ = "await " if is_async else ""
-    lines = [f"    {prefix} {snake}({', '.join(params)}) -> Any:"]
+    returns = "PageResult" if spec.get("output_schema") else "Any"
+    lines = [f"    {prefix} {snake}({', '.join(params)}) -> {returns}:"]
     lines.append(docstring(spec["description"], documented))
     lines.append(f"        return {await_}self.call({call_args})")
     return "\n".join(lines)

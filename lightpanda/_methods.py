@@ -8,14 +8,17 @@ is the same surface with ``async def`` signatures.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .browser import PageResult
 
 
 class SessionMethods:
     def call(self, tool: str, **kwargs: Any) -> Any:
         raise NotImplementedError
 
-    def click(self, *, selector: str | None = None, backend_node_id: int | None = None) -> Any:
+    def click(self, *, selector: str | None = None, backend_node_id: int | None = None) -> PageResult:
         """Click on an interactive element. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Returns the current page URL and title after the click.
 
         Args:
@@ -67,7 +70,7 @@ class SessionMethods:
             save: Optional bridge-store key. The extracted JSON is stored under this name and exposed as `lp.<name>` in subsequent /evaluate calls.
         """
         return self.call("extract", schema=schema, save=save)
-    def fill(self, *, value: str, selector: str | None = None, backend_node_id: int | None = None) -> Any:
+    def fill(self, *, value: str, selector: str | None = None, backend_node_id: int | None = None) -> PageResult:
         """Fill text into an input element. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId.
 
         Args:
@@ -102,8 +105,8 @@ class SessionMethods:
     def get_url(self) -> Any:
         """Current page URL. The browser may already have a page loaded (command, replayed script) not visible in this conversation — call this before assuming nothing is loaded when the user references the current page/site. Also useful to verify a navigation or detect a redirect."""
         return self.call("getUrl")
-    def goto(self, *, url: str, timeout: int | None = None, wait_until: str | None = None) -> Any:
-        """Navigate the current page to a URL. Returns a short status once `waitUntil` fires (default `load`), or a timeout notice; content rendered by post-load JavaScript may not be there yet (see `waitForState`). The page stays loaded for later reads and actions. To navigate and read in one call, pass `url` to `markdown`, `tree` or `html` instead; use `goto` when the next step is an action or `extract`.
+    def goto(self, *, url: str, timeout: int | None = None, wait_until: str | None = None) -> PageResult:
+        """Navigate the current page to a URL. Returns the HTTP status once `waitUntil` fires (default `load`), or a timeout notice; a 4xx or 5xx means the page you got is an error page, not the content — check it before reading on; content rendered by post-load JavaScript may not be there yet (see `waitForState`). The page stays loaded for later reads and actions. To navigate and read in one call, pass `url` to `markdown`, `tree` or `html` instead; use `goto` when the next step is an action or `extract`.
 
         Args:
             url: The URL to navigate to, must be a valid URL.
@@ -111,7 +114,7 @@ class SessionMethods:
             wait_until: Event that completes the navigation. Defaults to 'load'. Prefer 'domcontentloaded' followed by waitForSelector on pages whose late scripts (ads) hold 'load' back. Avoid 'done' (full quiescence): on pages with constant background activity it is the slowest choice and can run to the timeout.
         """
         return self.call("goto", url=url, timeout=timeout, wait_until=wait_until)
-    def hover(self, *, selector: str | None = None, backend_node_id: int | None = None) -> Any:
+    def hover(self, *, selector: str | None = None, backend_node_id: int | None = None) -> PageResult:
         """Hover over an element, triggering mouseover and mouseenter events. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Useful for menus, tooltips, and hover states.
 
         Args:
@@ -167,7 +170,7 @@ class SessionMethods:
             backend_node_id: The backend node ID of the element to inspect.
         """
         return self.call("nodeDetails", backend_node_id=backend_node_id)
-    def press(self, *, key: str, selector: str | None = None, backend_node_id: int | None = None) -> Any:
+    def press(self, *, key: str, selector: str | None = None, backend_node_id: int | None = None) -> PageResult:
         """Press a keyboard key, dispatching keydown and keyup events. Use key names like 'Enter', 'Tab', 'Escape', 'ArrowDown', 'Backspace', or single characters like 'a', '1'. Common shorthand is normalized: 'enter'/'return' → 'Enter', 'esc' → 'Escape', 'up'/'down'/'left'/'right' → 'Arrow*', 'space' → ' '. Pressing 'Enter' on a form input or submit button triggers implicit form submission.
 
         Args:
@@ -189,7 +192,7 @@ class SessionMethods:
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return self.call("screenshot", path=path, selector=selector, backend_node_id=backend_node_id, full_page=full_page, strip=strip, url=url, timeout=timeout)
-    def scroll(self, *, selector: str | None = None, backend_node_id: int | None = None, x: int | None = None, y: int | None = None) -> Any:
+    def scroll(self, *, selector: str | None = None, backend_node_id: int | None = None, x: int | None = None, y: int | None = None) -> PageResult:
         """Scroll the window, or an element's scroll container, to an absolute position; an omitted axis keeps its current offset. Target an element with a CSS selector (preferred for reproducibility) or a backendNodeId; omit both to scroll the window. Page scripts receive a `scroll` event, so content that loads on scroll (infinite feeds, lazy lists) may appear: read the page again afterwards, with `waitForState` if it is still loading. Returns the final scroll position and the current page URL and title.
 
         Args:
@@ -207,7 +210,7 @@ class SessionMethods:
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return self.call("search", query=query, timeout=timeout)
-    def select_option(self, *, value: str, selector: str | None = None, backend_node_id: int | None = None) -> Any:
+    def select_option(self, *, value: str, selector: str | None = None, backend_node_id: int | None = None) -> PageResult:
         """Select an option in a <select> dropdown element by its value. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Dispatches input and change events.
 
         Args:
@@ -216,7 +219,7 @@ class SessionMethods:
             backend_node_id: The backend node ID of the <select> element.
         """
         return self.call("selectOption", value=value, selector=selector, backend_node_id=backend_node_id)
-    def set_checked(self, *, checked: bool, selector: str | None = None, backend_node_id: int | None = None) -> Any:
+    def set_checked(self, *, checked: bool, selector: str | None = None, backend_node_id: int | None = None) -> PageResult:
         """Check or uncheck a checkbox or radio button. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Dispatches input, change, and click events.
 
         Args:
@@ -272,7 +275,7 @@ class AsyncSessionMethods:
     async def call(self, tool: str, **kwargs: Any) -> Any:
         raise NotImplementedError
 
-    async def click(self, *, selector: str | None = None, backend_node_id: int | None = None) -> Any:
+    async def click(self, *, selector: str | None = None, backend_node_id: int | None = None) -> PageResult:
         """Click on an interactive element. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Returns the current page URL and title after the click.
 
         Args:
@@ -324,7 +327,7 @@ class AsyncSessionMethods:
             save: Optional bridge-store key. The extracted JSON is stored under this name and exposed as `lp.<name>` in subsequent /evaluate calls.
         """
         return await self.call("extract", schema=schema, save=save)
-    async def fill(self, *, value: str, selector: str | None = None, backend_node_id: int | None = None) -> Any:
+    async def fill(self, *, value: str, selector: str | None = None, backend_node_id: int | None = None) -> PageResult:
         """Fill text into an input element. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId.
 
         Args:
@@ -359,8 +362,8 @@ class AsyncSessionMethods:
     async def get_url(self) -> Any:
         """Current page URL. The browser may already have a page loaded (command, replayed script) not visible in this conversation — call this before assuming nothing is loaded when the user references the current page/site. Also useful to verify a navigation or detect a redirect."""
         return await self.call("getUrl")
-    async def goto(self, *, url: str, timeout: int | None = None, wait_until: str | None = None) -> Any:
-        """Navigate the current page to a URL. Returns a short status once `waitUntil` fires (default `load`), or a timeout notice; content rendered by post-load JavaScript may not be there yet (see `waitForState`). The page stays loaded for later reads and actions. To navigate and read in one call, pass `url` to `markdown`, `tree` or `html` instead; use `goto` when the next step is an action or `extract`.
+    async def goto(self, *, url: str, timeout: int | None = None, wait_until: str | None = None) -> PageResult:
+        """Navigate the current page to a URL. Returns the HTTP status once `waitUntil` fires (default `load`), or a timeout notice; a 4xx or 5xx means the page you got is an error page, not the content — check it before reading on; content rendered by post-load JavaScript may not be there yet (see `waitForState`). The page stays loaded for later reads and actions. To navigate and read in one call, pass `url` to `markdown`, `tree` or `html` instead; use `goto` when the next step is an action or `extract`.
 
         Args:
             url: The URL to navigate to, must be a valid URL.
@@ -368,7 +371,7 @@ class AsyncSessionMethods:
             wait_until: Event that completes the navigation. Defaults to 'load'. Prefer 'domcontentloaded' followed by waitForSelector on pages whose late scripts (ads) hold 'load' back. Avoid 'done' (full quiescence): on pages with constant background activity it is the slowest choice and can run to the timeout.
         """
         return await self.call("goto", url=url, timeout=timeout, wait_until=wait_until)
-    async def hover(self, *, selector: str | None = None, backend_node_id: int | None = None) -> Any:
+    async def hover(self, *, selector: str | None = None, backend_node_id: int | None = None) -> PageResult:
         """Hover over an element, triggering mouseover and mouseenter events. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Useful for menus, tooltips, and hover states.
 
         Args:
@@ -424,7 +427,7 @@ class AsyncSessionMethods:
             backend_node_id: The backend node ID of the element to inspect.
         """
         return await self.call("nodeDetails", backend_node_id=backend_node_id)
-    async def press(self, *, key: str, selector: str | None = None, backend_node_id: int | None = None) -> Any:
+    async def press(self, *, key: str, selector: str | None = None, backend_node_id: int | None = None) -> PageResult:
         """Press a keyboard key, dispatching keydown and keyup events. Use key names like 'Enter', 'Tab', 'Escape', 'ArrowDown', 'Backspace', or single characters like 'a', '1'. Common shorthand is normalized: 'enter'/'return' → 'Enter', 'esc' → 'Escape', 'up'/'down'/'left'/'right' → 'Arrow*', 'space' → ' '. Pressing 'Enter' on a form input or submit button triggers implicit form submission.
 
         Args:
@@ -446,7 +449,7 @@ class AsyncSessionMethods:
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return await self.call("screenshot", path=path, selector=selector, backend_node_id=backend_node_id, full_page=full_page, strip=strip, url=url, timeout=timeout)
-    async def scroll(self, *, selector: str | None = None, backend_node_id: int | None = None, x: int | None = None, y: int | None = None) -> Any:
+    async def scroll(self, *, selector: str | None = None, backend_node_id: int | None = None, x: int | None = None, y: int | None = None) -> PageResult:
         """Scroll the window, or an element's scroll container, to an absolute position; an omitted axis keeps its current offset. Target an element with a CSS selector (preferred for reproducibility) or a backendNodeId; omit both to scroll the window. Page scripts receive a `scroll` event, so content that loads on scroll (infinite feeds, lazy lists) may appear: read the page again afterwards, with `waitForState` if it is still loading. Returns the final scroll position and the current page URL and title.
 
         Args:
@@ -464,7 +467,7 @@ class AsyncSessionMethods:
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return await self.call("search", query=query, timeout=timeout)
-    async def select_option(self, *, value: str, selector: str | None = None, backend_node_id: int | None = None) -> Any:
+    async def select_option(self, *, value: str, selector: str | None = None, backend_node_id: int | None = None) -> PageResult:
         """Select an option in a <select> dropdown element by its value. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Dispatches input and change events.
 
         Args:
@@ -473,7 +476,7 @@ class AsyncSessionMethods:
             backend_node_id: The backend node ID of the <select> element.
         """
         return await self.call("selectOption", value=value, selector=selector, backend_node_id=backend_node_id)
-    async def set_checked(self, *, checked: bool, selector: str | None = None, backend_node_id: int | None = None) -> Any:
+    async def set_checked(self, *, checked: bool, selector: str | None = None, backend_node_id: int | None = None) -> PageResult:
         """Check or uncheck a checkbox or radio button. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Dispatches input, change, and click events.
 
         Args:

@@ -232,6 +232,7 @@ class Browser:
             tool["name"]: {
                 "description": tool.get("description", ""),
                 "schema": tool.get("inputSchema") or {},
+                "output_schema": tool.get("outputSchema"),
             }
             for tool in listed.get("tools", [])
         }
@@ -239,7 +240,8 @@ class Browser:
 
     @property
     def tools(self) -> dict[str, dict]:
-        """Tool name → {description, schema}, as reported by the browser."""
+        """Tool name → {description, schema, output_schema}, as reported by
+        the browser. ``output_schema`` is None for tools that declare none."""
         return self._tools
 
     def new_session(self) -> Session:
