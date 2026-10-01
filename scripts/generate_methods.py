@@ -7,7 +7,8 @@ description and a Google-style ``Args:`` section from the schema's property
 descriptions, so IDEs and pdoc show what every argument means. Tools that
 declare an ``outputSchema`` answer with ``structuredContent``, which
 ``Session.call`` returns as a ``PageResult``, so those methods are annotated
-with it; the rest stay ``Any``. Being real code, the methods are
+with it and get a ``Returns:`` section listing its attributes from the
+schema's property descriptions; the rest stay ``Any``. Being real code, the methods are
 visible to IDEs, type checkers, and pdoc alike. Run with a binary available:
 
     uv run --no-project python scripts/generate_methods.py
@@ -24,7 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from lightpanda import Browser  # noqa: E402
-from lightpanda.browser import _SESSION_TOOLS, _snake  # noqa: E402
+from lightpanda.browser import _SESSION_TOOLS, PageResult, _snake  # noqa: E402
 
 PY_TYPES = {"string": "str", "integer": "int", "number": "float", "boolean": "bool", "object": "dict", "array": "list"}
 
@@ -53,13 +54,29 @@ class {cls}:
 '''
 
 
-def docstring(description: str, args: list[tuple[str, str]]) -> str:
+def returns_section(name: str, output_schema: dict) -> str:
+    """A Google-style ``Returns:`` section for a tool answering with
+    ``structuredContent``: the ``PageResult`` attributes, described by the
+    output schema's properties."""
+    lines = ["Returns:", "    PageResult: The sentence above, with these attributes (None when absent):", ""]
+    for prop, spec in output_schema.get("properties", {}).items():
+        attr = _snake(prop)
+        if attr not in PageResult.__annotations__:
+            raise SystemExit(f"tool {name}: output property {prop!r} has no PageResult attribute")
+        lines.append(f"    - `{attr}`: {spec.get('description', '').strip()}")
+    return "\n".join(lines)
+
+
+def docstring(description: str, args: list[tuple[str, str]], returns: str = "") -> str:
     """The method docstring: the tool description, then a Google-style
-    ``Args:`` section built from the schema's property descriptions."""
+    ``Args:`` section built from the schema's property descriptions, then
+    ``returns`` when given."""
     text = description.strip()
     documented = [(arg, desc.strip()) for arg, desc in args if desc.strip()]
     if documented:
         text += "\n\nArgs:\n" + "\n".join(f"    {arg}: {desc}" for arg, desc in documented)
+    if returns:
+        text += "\n\n" + returns
     body = text.replace("\\", "\\\\").replace('"""', '\\"\\"\\"')
     lines = body.split("\n")
     if len(lines) == 1:
@@ -100,9 +117,11 @@ def method_source(name: str, spec: dict, is_async: bool = False) -> str:
     call_args = ", ".join([f'"{name}"'] + forwards)
     prefix = "async def" if is_async else "def"
     await_ = "await " if is_async else ""
-    returns = "PageResult" if spec.get("output_schema") else "Any"
+    output_schema = spec.get("output_schema")
+    returns = "PageResult" if output_schema else "Any"
     lines = [f"    {prefix} {snake}({', '.join(params)}) -> {returns}:"]
-    lines.append(docstring(spec["description"], documented))
+    section = returns_section(name, output_schema) if output_schema else ""
+    lines.append(docstring(spec["description"], documented, section))
     lines.append(f"        return {await_}self.call({call_args})")
     return "\n".join(lines)
 
