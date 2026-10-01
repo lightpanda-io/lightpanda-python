@@ -24,6 +24,13 @@ class SessionMethods:
         Args:
             selector: CSS selector of the element to click. Preferred over backendNodeId.
             backend_node_id: The backend node ID of the element to click.
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
         """
         return self.call("click", selector=selector, backend_node_id=backend_node_id)
     def console_logs(self) -> Any:
@@ -77,6 +84,13 @@ class SessionMethods:
             value: The text to fill into the input element.
             selector: CSS selector of the input element to fill. Preferred over backendNodeId.
             backend_node_id: The backend node ID of the input element to fill.
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
         """
         return self.call("fill", value=value, selector=selector, backend_node_id=backend_node_id)
     def find_element(self, *, role: str | None = None, name: str | None = None) -> Any:
@@ -112,6 +126,13 @@ class SessionMethods:
             url: The URL to navigate to, must be a valid URL.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
             wait_until: Event that completes the navigation. Defaults to 'load'. Prefer 'domcontentloaded' followed by waitForSelector on pages whose late scripts (ads) hold 'load' back. Avoid 'done' (full quiescence): on pages with constant background activity it is the slowest choice and can run to the timeout.
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
         """
         return self.call("goto", url=url, timeout=timeout, wait_until=wait_until)
     def hover(self, *, selector: str | None = None, backend_node_id: int | None = None) -> PageResult:
@@ -120,6 +141,13 @@ class SessionMethods:
         Args:
             selector: CSS selector of the element to hover over. Preferred over backendNodeId.
             backend_node_id: The backend node ID of the element to hover over.
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
         """
         return self.call("hover", selector=selector, backend_node_id=backend_node_id)
     def html(self, *, selector: str | None = None, backend_node_id: int | None = None, max_bytes: int | None = None, strip: dict | None = None, url: str | None = None, timeout: int | None = None) -> Any:
@@ -177,6 +205,13 @@ class SessionMethods:
             key: The key to press (e.g. 'Enter', 'Tab', 'a').
             selector: Optional CSS selector of the element to target. Preferred over backendNodeId.
             backend_node_id: Optional backend node ID of the element to target. Defaults to the document when neither selector nor backendNodeId is provided; 0 is treated as omitted.
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
         """
         return self.call("press", key=key, selector=selector, backend_node_id=backend_node_id)
     def screenshot(self, *, path: str | None = None, selector: str | None = None, backend_node_id: int | None = None, full_page: bool | None = None, strip: dict | None = None, url: str | None = None, timeout: int | None = None) -> Any:
@@ -200,6 +235,13 @@ class SessionMethods:
             backend_node_id: Optional: The backend node ID of the element to scroll. If the element is not itself a scroll container, its nearest scrollable ancestor is scrolled instead. If neither this nor selector is given (or it is 0), scrolls the window.
             x: Optional: The horizontal scroll offset.
             y: Optional: The vertical scroll offset.
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
         """
         return self.call("scroll", selector=selector, backend_node_id=backend_node_id, x=x, y=y)
     def search(self, *, query: str, timeout: int | None = None) -> Any:
@@ -217,6 +259,13 @@ class SessionMethods:
             value: The value of the option to select.
             selector: CSS selector of the <select> element. Preferred over backendNodeId.
             backend_node_id: The backend node ID of the <select> element.
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
         """
         return self.call("selectOption", value=value, selector=selector, backend_node_id=backend_node_id)
     def set_checked(self, *, checked: bool, selector: str | None = None, backend_node_id: int | None = None) -> PageResult:
@@ -226,6 +275,13 @@ class SessionMethods:
             checked: Whether to check (true) or uncheck (false) the element.
             selector: CSS selector of the checkbox or radio input element. Preferred over backendNodeId.
             backend_node_id: The backend node ID of the checkbox or radio input element.
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
         """
         return self.call("setChecked", checked=checked, selector=selector, backend_node_id=backend_node_id)
     def structured_data(self, *, url: str | None = None, timeout: int | None = None) -> Any:
@@ -281,6 +337,13 @@ class AsyncSessionMethods:
         Args:
             selector: CSS selector of the element to click. Preferred over backendNodeId.
             backend_node_id: The backend node ID of the element to click.
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
         """
         return await self.call("click", selector=selector, backend_node_id=backend_node_id)
     async def console_logs(self) -> Any:
@@ -334,6 +397,13 @@ class AsyncSessionMethods:
             value: The text to fill into the input element.
             selector: CSS selector of the input element to fill. Preferred over backendNodeId.
             backend_node_id: The backend node ID of the input element to fill.
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
         """
         return await self.call("fill", value=value, selector=selector, backend_node_id=backend_node_id)
     async def find_element(self, *, role: str | None = None, name: str | None = None) -> Any:
@@ -369,6 +439,13 @@ class AsyncSessionMethods:
             url: The URL to navigate to, must be a valid URL.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
             wait_until: Event that completes the navigation. Defaults to 'load'. Prefer 'domcontentloaded' followed by waitForSelector on pages whose late scripts (ads) hold 'load' back. Avoid 'done' (full quiescence): on pages with constant background activity it is the slowest choice and can run to the timeout.
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
         """
         return await self.call("goto", url=url, timeout=timeout, wait_until=wait_until)
     async def hover(self, *, selector: str | None = None, backend_node_id: int | None = None) -> PageResult:
@@ -377,6 +454,13 @@ class AsyncSessionMethods:
         Args:
             selector: CSS selector of the element to hover over. Preferred over backendNodeId.
             backend_node_id: The backend node ID of the element to hover over.
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
         """
         return await self.call("hover", selector=selector, backend_node_id=backend_node_id)
     async def html(self, *, selector: str | None = None, backend_node_id: int | None = None, max_bytes: int | None = None, strip: dict | None = None, url: str | None = None, timeout: int | None = None) -> Any:
@@ -434,6 +518,13 @@ class AsyncSessionMethods:
             key: The key to press (e.g. 'Enter', 'Tab', 'a').
             selector: Optional CSS selector of the element to target. Preferred over backendNodeId.
             backend_node_id: Optional backend node ID of the element to target. Defaults to the document when neither selector nor backendNodeId is provided; 0 is treated as omitted.
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
         """
         return await self.call("press", key=key, selector=selector, backend_node_id=backend_node_id)
     async def screenshot(self, *, path: str | None = None, selector: str | None = None, backend_node_id: int | None = None, full_page: bool | None = None, strip: dict | None = None, url: str | None = None, timeout: int | None = None) -> Any:
@@ -457,6 +548,13 @@ class AsyncSessionMethods:
             backend_node_id: Optional: The backend node ID of the element to scroll. If the element is not itself a scroll container, its nearest scrollable ancestor is scrolled instead. If neither this nor selector is given (or it is 0), scrolls the window.
             x: Optional: The horizontal scroll offset.
             y: Optional: The vertical scroll offset.
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
         """
         return await self.call("scroll", selector=selector, backend_node_id=backend_node_id, x=x, y=y)
     async def search(self, *, query: str, timeout: int | None = None) -> Any:
@@ -474,6 +572,13 @@ class AsyncSessionMethods:
             value: The value of the option to select.
             selector: CSS selector of the <select> element. Preferred over backendNodeId.
             backend_node_id: The backend node ID of the <select> element.
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
         """
         return await self.call("selectOption", value=value, selector=selector, backend_node_id=backend_node_id)
     async def set_checked(self, *, checked: bool, selector: str | None = None, backend_node_id: int | None = None) -> PageResult:
@@ -483,6 +588,13 @@ class AsyncSessionMethods:
             checked: Whether to check (true) or uncheck (false) the element.
             selector: CSS selector of the checkbox or radio input element. Preferred over backendNodeId.
             backend_node_id: The backend node ID of the checkbox or radio input element.
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
         """
         return await self.call("setChecked", checked=checked, selector=selector, backend_node_id=backend_node_id)
     async def structured_data(self, *, url: str | None = None, timeout: int | None = None) -> Any:
