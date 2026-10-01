@@ -17,7 +17,7 @@ import os
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 
-from .browser import Browser, Element, Session, _generated, run_script
+from .browser import Browser, Element, PageVerdict, Session, _generated, run_script
 from .client import _documented
 from .errors import LightpandaError
 
@@ -57,6 +57,10 @@ class AsyncSession(AsyncSessionMethods):
         if isinstance(result, list):
             return [AsyncElement(node, self) if isinstance(node, Element) else node for node in result]
         return result
+
+    async def judge(self, *, threshold: float = 0.5) -> PageVerdict:
+        """Judge whether the page is worth reading; see :meth:`Session.judge`."""
+        return await _run(self._executor, self._session.judge, threshold=threshold)
 
     def __getattr__(self, attr: str):
         session = self.__dict__.get("_session")

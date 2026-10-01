@@ -38,7 +38,7 @@ __docformat__ = "google"
 
 from .async_browser import AsyncBrowser, AsyncElement, AsyncSession, run_script_async
 from .webdriver import AsyncWebDriverServer, WebDriverServer
-from .browser import Browser, Element, PageResult, Session, run_script
+from .browser import Browser, Element, PageResult, PageVerdict, Session, run_script
 from .cdp import AsyncCDPServer, CDPServer
 from .errors import LightpandaError, ProcessError, ProtocolError, ScriptError, ToolError
 
@@ -47,6 +47,7 @@ __all__ = [
     "Session",
     "Element",
     "PageResult",
+    "PageVerdict",
     "run_script",
     "AsyncBrowser",
     "AsyncSession",

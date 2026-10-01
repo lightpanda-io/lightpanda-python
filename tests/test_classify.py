@@ -73,3 +73,24 @@ def test_classify_presets_and_questions(classify_browser, fixture_url):
         assert result["isBlocked"] == 0.9
         assert result["has_list"] == 0.9
         assert result["kind"]["choice"] == "home"
+
+
+
+def test_judge(classify_browser, fixture_url):
+    with classify_browser.new_session() as page:
+        page.goto(url=f"{fixture_url}/index.html")
+        verdict = page.judge()
+        assert verdict.is_blocked and verdict.is_paywall and not verdict.ok
+        assert set(verdict.scores) >= {"is_blocked", "is_login_wall", "is_unsupported_browser"}
+        assert set(verdict.scores.values()) == {0.9}
+        assert verdict.reason in verdict.scores
+        assert page.judge(threshold=0.95).ok
+        assert page.judge(threshold=0.95).reason is None
+
+
+async def test_judge_async(classify_browser, fixture_url):
+    from lightpanda import AsyncBrowser
+
+    async with AsyncBrowser.wrap(classify_browser).session() as page:
+        await page.goto(url=f"{fixture_url}/index.html")
+        assert (await page.judge()).is_captcha
