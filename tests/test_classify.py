@@ -8,7 +8,8 @@ from lightpanda import Browser
 
 
 class MockTypeSafe(http.server.BaseHTTPRequestHandler):
-    """Answers every question asked: 0.9 for a noul, the first option for a choice."""
+    """Answers every question asked: 0.9 for a noul, the first option for a
+    choice, the top level for a score."""
 
     def do_POST(self):
         request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
@@ -16,6 +17,15 @@ class MockTypeSafe(http.server.BaseHTTPRequestHandler):
         for key, question in request["questions"].items():
             if question["type"] == "noul":
                 answers[key] = {"type": "noul", "noul": 0.9}
+            elif question["type"] == "score":
+                top = len(question["criteria"]) - 1
+                answers[key] = {
+                    "type": "score",
+                    "score": top - 0.2,
+                    "legend": {str(i): level for i, level in enumerate(question["criteria"])},
+                    "probabilities": {str(i): 0.8 if i == top else 0.2 / top for i in range(top + 1)},
+                    "confidence": 0.8,
+                }
             else:
                 options = list(question["criteria"])
                 rest = 0.2 / max(len(options) - 1, 1)
@@ -73,6 +83,17 @@ def test_classify_presets_and_questions(classify_browser, fixture_url):
         assert result["isBlocked"] == 0.9
         assert result["has_list"] == 0.9
         assert result["kind"]["choice"] == "home"
+
+
+def test_classify_score(classify_browser, fixture_url):
+    with classify_browser.new_session() as page:
+        page.goto(url=f"{fixture_url}/index.html")
+        result = page.classify(
+            questions={"completeness": {"question": "How complete is it?", "levels": ["empty", "partial", "full"]}}
+        )
+        assert result["completeness"]["level"] == "full"
+        assert result["completeness"]["score"] == 1.8
+        assert result["completeness"]["probabilities"] == {"empty": 0.1, "partial": 0.1, "full": 0.8}
 
 
 
