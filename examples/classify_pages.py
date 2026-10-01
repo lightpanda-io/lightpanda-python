@@ -16,6 +16,8 @@ extracting from and what kind of page it is:
 - ``True`` asks a preset: isBlocked, isCaptcha, isConsentWall, isEmptyCatalog
 - a string asks a yes/no question and returns its probability
 - ``{"question", "options"}`` asks a choice
+- ``{"question", "levels"}`` asks for a score on levels ordered low to high,
+  answering the ``score`` between them and the nearest ``level``
 - a plain list of categories returns the one that fits
 
 When all you need is the gate, ``page.judge()`` asks every preset in one call
@@ -42,14 +44,28 @@ URLS = [
 ]
 
 QUESTIONS = {
+    # noul
     "isBlocked": True,
     "isCaptcha": True,
     "isConsentWall": True,
     "isEmptyCatalog": True,
     "has_price": "Does the page show a price?",
+    # choice
     "kind": {
         "question": "What kind of page is this?",
-        "options": ["homepage", "listing", "product", "article", "search results", "login"],
+        "options": [
+            "homepage",
+            "listing",
+            "product",
+            "article",
+            "search results",
+            "login",
+        ],
+    },
+    # score
+    "value": {
+        "question": "How much useful content would a scraper get from this page?",
+        "levels": ["none", "little", "plenty"],
     },
 }
 
@@ -62,25 +78,34 @@ def main() -> None:
 
     with Browser() as browser:
         if "classify" not in browser.tools:
-            sys.exit("This lightpanda binary has no classify tool; point LIGHTPANDA_BIN at a newer one.")
+            sys.exit(
+                "This lightpanda binary has no classify tool; point LIGHTPANDA_BIN at a newer one."
+            )
 
-        print(f"{'page':<44}  {'kind':<16} {'price':>5}  flags")
+        print(f"{'page':<44}  {'kind':<16} {'price':>5}  {'value':<11}  flags")
         for url in URLS:
             with browser.new_session() as page:
                 page.goto(url=url)
                 answers = page.classify(questions=QUESTIONS)
                 kind = answers["kind"]
-                flags = ", ".join(f"{p} {answers[p]:.2f}" for p in PRESETS if answers[p] >= 0.5)
+                value = answers["value"]
+                flags = ", ".join(
+                    f"{p} {answers[p]:.2f}" for p in PRESETS if answers[p] >= 0.5
+                )
                 name = url.split("://", 1)[1][:44]
                 print(
-                    f"{name:<44}  {kind['choice']:<16} {answers['has_price']:>5.2f}  {flags or '-'}"
+                    f"{name:<44}  {kind['choice']:<16} {answers['has_price']:>5.2f}  "
+                    f"{value['level']:<6} {value['score']:.2f}  {flags or '-'}"
                 )
 
         # A list of categories is the shortest form, and `selector` narrows the
         # question to one part of the page.
         with browser.new_session() as page:
             page.goto(url="https://en.wikipedia.org/wiki/Headless_browser")
-            topic = page.classify(questions=["software", "biology", "history", "sports"], selector="#bodyContent")
+            topic = page.classify(
+                questions=["software", "biology", "history", "sports"],
+                selector="#bodyContent",
+            )
             print(f"\nWikipedia article body is about: {topic}")
 
         # judge() is the gate on its own: every preset, as bools.
@@ -90,7 +115,11 @@ def main() -> None:
                 page.goto(url=url)
                 verdict = page.judge()
                 name = url.split("://", 1)[1][:44]
-                print(f"keep  {name}" if verdict.ok else f"skip  {name:<44}  {verdict.reason:<16}  {verdict}")
+                print(
+                    f"keep  {name}"
+                    if verdict.ok
+                    else f"skip  {name:<44}  {verdict.reason:<16}  {verdict}"
+                )
 
 
 if __name__ == "__main__":
