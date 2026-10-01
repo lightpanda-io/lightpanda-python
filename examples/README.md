@@ -247,30 +247,31 @@ if not verdict.ok:
 
 ```
 page                                          kind             price  value        flags
-quotes.toscrape.com/js/                       homepage          0.01  plenty 1.75  -
-books.toscrape.com/catalogue/a-light-in-the-  product           1.00  plenty 1.95  -
+quotes.toscrape.com/js/                       listing           0.01  plenty 1.95  -
+books.toscrape.com/catalogue/a-light-in-the-  product           0.99  plenty 1.91  -
 en.wikipedia.org/wiki/Headless_browser        article           0.02  plenty 1.56  -
-news.ycombinator.com/login                    login             0.01  little 0.56  -
-en.wikipedia.org/w/index.php?search=xqzzzvqk  search results    0.01  none   0.41  isEmptyCatalog 0.99
-www.g2.com/                                   homepage          0.02  none   0.00  isBlocked 0.76
-www.yahoo.com/                                article           0.01  little 1.28  isConsentWall 0.69
+news.ycombinator.com/login                    login             0.01  little 0.62  -
+en.wikipedia.org/w/index.php?search=xqzzzvqk  search results    0.01  none   0.35  isEmptyCatalog 0.99
+www.g2.com/                                   homepage          0.02  none   0.02  isBlocked 0.97, isCaptcha 0.98
+www.yahoo.com/                                homepage          0.09  little 1.44  -
 
 keep  quotes.toscrape.com/js/
 keep  books.toscrape.com/catalogue/a-light-in-the-
 keep  en.wikipedia.org/wiki/Headless_browser
-skip  news.ycombinator.com/login                    is_login_wall     PageVerdict(is_login_wall=0.95)
+skip  news.ycombinator.com/login                    is_login_wall     PageVerdict(is_login_wall=0.96)
 skip  en.wikipedia.org/w/index.php?search=xqzzzvqk  is_empty_catalog  PageVerdict(is_empty_catalog=0.99)
-skip  www.g2.com/                                   is_error_page     PageVerdict(is_blocked=0.75, is_error_page=0.95)
+skip  www.g2.com/                                   is_captcha        PageVerdict(is_blocked=0.97, is_captcha=0.98, is_error_page=0.82)
 keep  www.yahoo.com/
 ```
 
-A score lands between its levels: Yahoo's consent page scores 1.28 on
-none/little/plenty, and `level` names the nearest one.
+A score lands between its levels: Yahoo's homepage scores 1.44 on
+none/little/plenty, and `level` names the nearest one. G2 shows checks stacking:
+its DataDome CAPTCHA is also a block and an error page, and `reason` names the
+strongest.
 
 The model is not deterministic, so expect the scores to move a little between
 runs, and a borderline flag to come and go. Some sites change too: Yahoo only
-sometimes redirects to its consent page, which is why it was flagged in the
-first pass above and kept in the second.
+sometimes redirects to its consent page, and is then flagged `isConsentWall`.
 
 Needs `TYPESAFE_API_KEY`, and a browser with the `classify` tool. Until a
 release ships both, the script installs this checkout rather than the PyPI
