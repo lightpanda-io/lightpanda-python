@@ -247,24 +247,25 @@ if not verdict.ok:
 page                                          kind             price  flags
 quotes.toscrape.com/js/                       homepage          0.01  -
 books.toscrape.com/catalogue/a-light-in-the-  product           1.00  -
-en.wikipedia.org/wiki/Headless_browser        article           0.02  -
+en.wikipedia.org/wiki/Headless_browser        article           0.01  -
 news.ycombinator.com/login                    login             0.01  -
-en.wikipedia.org/w/index.php?search=xqzzzvqk  search results    0.01  isEmptyCatalog 0.55
+en.wikipedia.org/w/index.php?search=xqzzzvqk  search results    0.01  isEmptyCatalog 0.99
 www.g2.com/                                   homepage          0.02  isBlocked 0.77
-www.yahoo.com/                                article           0.01  isConsentWall 0.69
+www.yahoo.com/                                article           0.01  isConsentWall 0.70
 
 keep  quotes.toscrape.com/js/
 keep  books.toscrape.com/catalogue/a-light-in-the-
 keep  en.wikipedia.org/wiki/Headless_browser
-skip  news.ycombinator.com/login                    is_login_wall     PageVerdict(is_login_wall=0.94)
-skip  en.wikipedia.org/w/index.php?search=xqzzzvqk  is_empty_catalog  PageVerdict(is_empty_catalog=0.56)
-skip  www.g2.com/                                   is_error_page     PageVerdict(is_blocked=0.75, is_error_page=0.95)
-skip  www.yahoo.com/                                is_consent_wall   PageVerdict(is_consent_wall=0.68)
+skip  news.ycombinator.com/login                    is_login_wall     PageVerdict(is_login_wall=0.95)
+skip  en.wikipedia.org/w/index.php?search=xqzzzvqk  is_empty_catalog  PageVerdict(is_empty_catalog=0.99)
+skip  www.g2.com/                                   is_error_page     PageVerdict(is_blocked=0.76, is_error_page=0.95)
+keep  www.yahoo.com/
 ```
 
 The model is not deterministic, so expect the scores to move a little between
-runs, and a borderline flag such as the empty search's to come and go. Some
-sites change too: Yahoo only sometimes redirects to its consent page.
+runs, and a borderline flag to come and go. Some sites change too: Yahoo only
+sometimes redirects to its consent page, which is why it was flagged in the
+first pass above and kept in the second.
 
 Needs `TYPESAFE_API_KEY`, and a browser with the `classify` tool. Until a
 release ships both, the script installs this checkout rather than the PyPI
