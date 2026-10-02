@@ -218,60 +218,36 @@ later run instant.
 
 ## `classify_pages.py` — triage a crawl before scraping it
 
-A 200 response can still be a consent wall, a bot check or an empty search.
-`classify` asks TypeSafe's page model about the rendered page, so a single
-call per URL tells you whether the page is worth extracting from and what
-kind of page it is. One `questions` dict can mix presets, yes/no questions,
-a choice and a score:
-
-```python
-answers = page.classify(questions={
-    "isBlocked": True, "isConsentWall": True, "isEmptyCatalog": True,  # presets
-    "has_price": "Does the page show a price?",                       # yes/no -> probability
-    "kind": {"question": "What kind of page is this?",
-             "options": ["homepage", "listing", "product", "article", "search results", "login"]},
-    "value": {"question": "How much useful content would a scraper get from this page?",
-              "levels": ["none", "little", "plenty"]},   # -> {"score": 1.28, "level": "little", ...}
-})
-page.classify(questions=["software", "biology", "history"], selector="#bodyContent")  # -> "software"
-```
-
-When all you need is the gate, `page.judge()` asks every preset in one call
-and answers with bools, keeping the probabilities in `scores`:
+A 200 response can still be a login wall, a CAPTCHA or an empty search.
+`page.judge()` asks TypeSafe's page model about the rendered page and says
+whether to skip it, and why. For the pages worth keeping, `page.classify`
+answers your own questions in one call: yes/no, a choice, or a score.
 
 ```python
 verdict = page.judge()
 if not verdict.ok:
-    print("skip", verdict.reason)   # is_blocked
+    print("skip", verdict.reason)          # is_captcha
+else:
+    answers = page.classify(questions={
+        "has_price": "Does the page show a price?",                     # -> 0.99
+        "kind": {"question": "What kind of page is this?",
+                 "options": ["product", "listing", "article", "other"]},  # -> {"choice": "product", ...}
+        "content": {"question": "How much useful content would a scraper get from this page?",
+                    "levels": ["none", "little", "plenty"]},             # -> {"level": "plenty", "score": 1.94, ...}
+    })
 ```
 
 ```
-page                                          kind             price  value        flags
-quotes.toscrape.com/js/                       listing           0.01  plenty 1.95  -
-books.toscrape.com/catalogue/a-light-in-the-  product           0.99  plenty 1.91  -
-en.wikipedia.org/wiki/Headless_browser        article           0.02  plenty 1.56  -
-news.ycombinator.com/login                    login             0.01  little 0.62  -
-en.wikipedia.org/w/index.php?search=xqzzzvqk  search results    0.01  none   0.35  isEmptyCatalog 0.99
-www.g2.com/                                   homepage          0.02  none   0.02  isBlocked 0.97, isCaptcha 0.98
-www.yahoo.com/                                homepage          0.09  little 1.44  -
-
-keep  quotes.toscrape.com/js/
-keep  books.toscrape.com/catalogue/a-light-in-the-
-keep  en.wikipedia.org/wiki/Headless_browser
-skip  news.ycombinator.com/login                    is_login_wall     PageVerdict(is_login_wall=0.96)
-skip  en.wikipedia.org/w/index.php?search=xqzzzvqk  is_empty_catalog  PageVerdict(is_empty_catalog=0.99)
-skip  www.g2.com/                                   is_captcha        PageVerdict(is_blocked=0.97, is_captcha=0.98, is_error_page=0.82)
-keep  www.yahoo.com/
+keep  books.toscrape.com/catalogue/a-light-in-  product  price 0.99  content plenty (1.94)
+keep  quotes.toscrape.com/js/                   listing  price 0.01  content plenty (1.90)
+keep  en.wikipedia.org/wiki/Headless_browser    article  price 0.02  content plenty (1.52)
+skip  news.ycombinator.com/login                is_login_wall
+skip  en.wikipedia.org/w/index.php?search=xqzz  is_empty_catalog
+skip  www.g2.com/                               is_captcha
 ```
 
-A score lands between its levels: Yahoo's homepage scores 1.44 on
-none/little/plenty, and `level` names the nearest one. G2 shows checks stacking:
-its DataDome CAPTCHA is also a block and an error page, and `reason` names the
-strongest.
-
-The model is not deterministic, so expect the scores to move a little between
-runs, and a borderline flag to come and go. Some sites change too: Yahoo only
-sometimes redirects to its consent page, and is then flagged `isConsentWall`.
+A score falls between its levels (0 = none, 2 = plenty). Scores vary a little
+between runs.
 
 Needs `TYPESAFE_API_KEY`, and a browser with the `classify` tool. Until a
 release ships both, the script installs this checkout rather than the PyPI
