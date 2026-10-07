@@ -40,7 +40,7 @@ class SessionMethods:
         """List the forms on the page as JSON: each form's `backendNodeId`, `action`, `method` and `fields`, where each field has `backendNodeId`, `tagName`, `name`, `inputType`, `required`, `disabled`, and when present `value`, `placeholder` and select `options`. Use it before filling a form to see every field it expects. It returns no CSS selectors; get one per field with `nodeDetails` so the fill calls stay replayable. If a url is provided, it navigates there first.
 
         Args:
-            url: Optional URL to navigate to before processing.
+            url: Optional URL to navigate to before processing. An empty string is treated as omitted.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return self.call("detectForms", url=url, timeout=timeout)
@@ -49,7 +49,7 @@ class SessionMethods:
 
         Args:
             script: JavaScript run in the page context. A bare trailing expression, or `return` with top-level `await`, is the result.
-            url: Optional URL to navigate to before evaluating.
+            url: Optional URL to navigate to before evaluating. An empty string is treated as omitted.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
             save: Optional bridge-store key. The evaluate's return value is stored under this name and re-exposed as `lp.<name>` to subsequent evaluates. Objects, arrays, and strings are serialized automatically — no JSON.stringify needed.
         """
@@ -105,7 +105,7 @@ class SessionMethods:
         """Cookies stored in the browser. Defaults to cookies whose domain matches the current page's host. Pass `url=<URL>` to filter for another host, or `all=true` to dump every cookie regardless of host. Useful for debugging authentication and session state.
 
         Args:
-            url: Restrict output to cookies matching this URL's host. Defaults to the current page.
+            url: Restrict output to cookies matching this URL's host. Defaults to the current page. An empty string is treated as omitted.
             all: If true, dump every cookie regardless of host. Overrides `url`.
         """
         return self.call("getCookies", url=url, all=all)
@@ -158,7 +158,7 @@ class SessionMethods:
             backend_node_id: Optional backend node ID. When set, dump only that node's outerHTML. 0 is treated as omitted.
             max_bytes: Optional soft cap on output size in bytes. Content is truncated at a UTF-8 boundary and a short '[truncated]' marker is appended past the cap.
             strip: Optional. Omit element groups from the output: `js` (script, noscript, script preloads), `css` (style, stylesheet links), `ui` (css plus img, picture, video, audio, svg, canvas, iframe), `invisible` (elements an author rule or inline style sets to display:none), `shell` (nav, aside, dialog, page-level header/footer and the matching landmark roles; skipped when that would drop most of the text), `clutter` (keep only the main content, in the manner of reader modes; includes `shell` and `invisible`, and falls back to `shell` when it finds too little). {"js":true,"css":true} keeps a page dump small.
-            url: Optional URL to navigate to before dumping.
+            url: Optional URL to navigate to before dumping. An empty string is treated as omitted.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return self.call("html", selector=selector, backend_node_id=backend_node_id, max_bytes=max_bytes, strip=strip, url=url, timeout=timeout)
@@ -166,7 +166,7 @@ class SessionMethods:
         """List every visible interactive element on the page as a JSON array: native controls, ARIA widgets, contenteditable regions, elements with event listeners, and focusable elements. Each entry has `backendNodeId`, `tagName`, `role`, `name`, `type` (why it counts as interactive), `tabIndex`, and when present `listeners`, `disabled`, `id`, `class`, `href`, `inputType`, `value`, `elementName` and `placeholder`. Use it to survey what can be acted on; to locate one element by role or name, `findElement` is cheaper. If a url is provided, it navigates there first.
 
         Args:
-            url: Optional URL to navigate to before processing.
+            url: Optional URL to navigate to before processing. An empty string is treated as omitted.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return self.call("interactiveElements", url=url, timeout=timeout)
@@ -175,7 +175,7 @@ class SessionMethods:
 
         Args:
             limit: Optional. Return at most this many links, in document order.
-            url: Optional URL to navigate to before processing.
+            url: Optional URL to navigate to before processing. An empty string is treated as omitted.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return self.call("links", limit=limit, url=url, timeout=timeout)
@@ -187,7 +187,7 @@ class SessionMethods:
             backend_node_id: Optional backend node ID. Render markdown for just that node's subtree. 0 is treated as omitted.
             max_bytes: Optional soft cap on output size in bytes. Content is truncated at a UTF-8 boundary and a short '[truncated]' marker is appended past the cap.
             strip: Optional. Omit element groups from the output; same groups as the html tool's strip. `shell` (page chrome by markup) and `clutter` (keep only the main content, in the manner of reader modes) are the ones that matter for reading; `ui` also drops images.
-            url: Optional URL to navigate to before rendering.
+            url: Optional URL to navigate to before rendering. An empty string is treated as omitted.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return self.call("markdown", selector=selector, backend_node_id=backend_node_id, max_bytes=max_bytes, strip=strip, url=url, timeout=timeout)
@@ -223,7 +223,7 @@ class SessionMethods:
             backend_node_id: Optional backend node ID. When set, render only that node. 0 is treated as omitted.
             full_page: Render the whole content height instead of one viewport. Defaults to false.
             strip: Optional. Omit element groups from the render; same groups as the html tool's strip (`js`, `css`, `ui`, `invisible`, `shell`, `clutter`).
-            url: Optional URL to navigate to before rendering.
+            url: Optional URL to navigate to before rendering. An empty string is treated as omitted.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return self.call("screenshot", path=path, selector=selector, backend_node_id=backend_node_id, full_page=full_page, strip=strip, url=url, timeout=timeout)
@@ -288,7 +288,7 @@ class SessionMethods:
         """Page metadata as JSON: `jsonLd` (each JSON-LD block as a string), `openGraph`, `twitterCard`, `meta` and `links` (key/value lists), plus `alternate` (hreflang variants) and `linkHeaders` (relations from the HTTP Link header) when present. Empty sections come back as empty arrays. Use it for publisher-declared facts such as product price, article author or canonical URL before scraping the visible text for them. If a url is provided, it navigates there first.
 
         Args:
-            url: Optional URL to navigate to before processing.
+            url: Optional URL to navigate to before processing. An empty string is treated as omitted.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return self.call("structuredData", url=url, timeout=timeout)
@@ -296,7 +296,7 @@ class SessionMethods:
         """Semantic outline of the page as indented text: one node per line with its role, accessible name, value and backendNodeId, plus checked state and select options with the selected one marked. The default first read of an unfamiliar page; input and select values are already here, so no `nodeDetails` call is needed to read them. Pass `backendNodeId` to scope to a subtree and `maxDepth` to survey structure before going deeper. Read it again after any page-changing action, since the DOM it describes may have changed; use `nodeDetails` to turn a backendNodeId into a CSS selector for actions.
 
         Args:
-            url: Optional URL to navigate to before fetching the semantic tree.
+            url: Optional URL to navigate to before fetching the semantic tree. An empty string is treated as omitted.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
             backend_node_id: Optional backend node ID to get the tree for a specific element instead of the document root. 0 is treated as omitted.
             max_depth: Optional maximum depth of the tree to return. Useful for exploring high-level structure first.
@@ -353,7 +353,7 @@ class AsyncSessionMethods:
         """List the forms on the page as JSON: each form's `backendNodeId`, `action`, `method` and `fields`, where each field has `backendNodeId`, `tagName`, `name`, `inputType`, `required`, `disabled`, and when present `value`, `placeholder` and select `options`. Use it before filling a form to see every field it expects. It returns no CSS selectors; get one per field with `nodeDetails` so the fill calls stay replayable. If a url is provided, it navigates there first.
 
         Args:
-            url: Optional URL to navigate to before processing.
+            url: Optional URL to navigate to before processing. An empty string is treated as omitted.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return await self.call("detectForms", url=url, timeout=timeout)
@@ -362,7 +362,7 @@ class AsyncSessionMethods:
 
         Args:
             script: JavaScript run in the page context. A bare trailing expression, or `return` with top-level `await`, is the result.
-            url: Optional URL to navigate to before evaluating.
+            url: Optional URL to navigate to before evaluating. An empty string is treated as omitted.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
             save: Optional bridge-store key. The evaluate's return value is stored under this name and re-exposed as `lp.<name>` to subsequent evaluates. Objects, arrays, and strings are serialized automatically — no JSON.stringify needed.
         """
@@ -418,7 +418,7 @@ class AsyncSessionMethods:
         """Cookies stored in the browser. Defaults to cookies whose domain matches the current page's host. Pass `url=<URL>` to filter for another host, or `all=true` to dump every cookie regardless of host. Useful for debugging authentication and session state.
 
         Args:
-            url: Restrict output to cookies matching this URL's host. Defaults to the current page.
+            url: Restrict output to cookies matching this URL's host. Defaults to the current page. An empty string is treated as omitted.
             all: If true, dump every cookie regardless of host. Overrides `url`.
         """
         return await self.call("getCookies", url=url, all=all)
@@ -471,7 +471,7 @@ class AsyncSessionMethods:
             backend_node_id: Optional backend node ID. When set, dump only that node's outerHTML. 0 is treated as omitted.
             max_bytes: Optional soft cap on output size in bytes. Content is truncated at a UTF-8 boundary and a short '[truncated]' marker is appended past the cap.
             strip: Optional. Omit element groups from the output: `js` (script, noscript, script preloads), `css` (style, stylesheet links), `ui` (css plus img, picture, video, audio, svg, canvas, iframe), `invisible` (elements an author rule or inline style sets to display:none), `shell` (nav, aside, dialog, page-level header/footer and the matching landmark roles; skipped when that would drop most of the text), `clutter` (keep only the main content, in the manner of reader modes; includes `shell` and `invisible`, and falls back to `shell` when it finds too little). {"js":true,"css":true} keeps a page dump small.
-            url: Optional URL to navigate to before dumping.
+            url: Optional URL to navigate to before dumping. An empty string is treated as omitted.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return await self.call("html", selector=selector, backend_node_id=backend_node_id, max_bytes=max_bytes, strip=strip, url=url, timeout=timeout)
@@ -479,7 +479,7 @@ class AsyncSessionMethods:
         """List every visible interactive element on the page as a JSON array: native controls, ARIA widgets, contenteditable regions, elements with event listeners, and focusable elements. Each entry has `backendNodeId`, `tagName`, `role`, `name`, `type` (why it counts as interactive), `tabIndex`, and when present `listeners`, `disabled`, `id`, `class`, `href`, `inputType`, `value`, `elementName` and `placeholder`. Use it to survey what can be acted on; to locate one element by role or name, `findElement` is cheaper. If a url is provided, it navigates there first.
 
         Args:
-            url: Optional URL to navigate to before processing.
+            url: Optional URL to navigate to before processing. An empty string is treated as omitted.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return await self.call("interactiveElements", url=url, timeout=timeout)
@@ -488,7 +488,7 @@ class AsyncSessionMethods:
 
         Args:
             limit: Optional. Return at most this many links, in document order.
-            url: Optional URL to navigate to before processing.
+            url: Optional URL to navigate to before processing. An empty string is treated as omitted.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return await self.call("links", limit=limit, url=url, timeout=timeout)
@@ -500,7 +500,7 @@ class AsyncSessionMethods:
             backend_node_id: Optional backend node ID. Render markdown for just that node's subtree. 0 is treated as omitted.
             max_bytes: Optional soft cap on output size in bytes. Content is truncated at a UTF-8 boundary and a short '[truncated]' marker is appended past the cap.
             strip: Optional. Omit element groups from the output; same groups as the html tool's strip. `shell` (page chrome by markup) and `clutter` (keep only the main content, in the manner of reader modes) are the ones that matter for reading; `ui` also drops images.
-            url: Optional URL to navigate to before rendering.
+            url: Optional URL to navigate to before rendering. An empty string is treated as omitted.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return await self.call("markdown", selector=selector, backend_node_id=backend_node_id, max_bytes=max_bytes, strip=strip, url=url, timeout=timeout)
@@ -536,7 +536,7 @@ class AsyncSessionMethods:
             backend_node_id: Optional backend node ID. When set, render only that node. 0 is treated as omitted.
             full_page: Render the whole content height instead of one viewport. Defaults to false.
             strip: Optional. Omit element groups from the render; same groups as the html tool's strip (`js`, `css`, `ui`, `invisible`, `shell`, `clutter`).
-            url: Optional URL to navigate to before rendering.
+            url: Optional URL to navigate to before rendering. An empty string is treated as omitted.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return await self.call("screenshot", path=path, selector=selector, backend_node_id=backend_node_id, full_page=full_page, strip=strip, url=url, timeout=timeout)
@@ -601,7 +601,7 @@ class AsyncSessionMethods:
         """Page metadata as JSON: `jsonLd` (each JSON-LD block as a string), `openGraph`, `twitterCard`, `meta` and `links` (key/value lists), plus `alternate` (hreflang variants) and `linkHeaders` (relations from the HTTP Link header) when present. Empty sections come back as empty arrays. Use it for publisher-declared facts such as product price, article author or canonical URL before scraping the visible text for them. If a url is provided, it navigates there first.
 
         Args:
-            url: Optional URL to navigate to before processing.
+            url: Optional URL to navigate to before processing. An empty string is treated as omitted.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return await self.call("structuredData", url=url, timeout=timeout)
@@ -609,7 +609,7 @@ class AsyncSessionMethods:
         """Semantic outline of the page as indented text: one node per line with its role, accessible name, value and backendNodeId, plus checked state and select options with the selected one marked. The default first read of an unfamiliar page; input and select values are already here, so no `nodeDetails` call is needed to read them. Pass `backendNodeId` to scope to a subtree and `maxDepth` to survey structure before going deeper. Read it again after any page-changing action, since the DOM it describes may have changed; use `nodeDetails` to turn a backendNodeId into a CSS selector for actions.
 
         Args:
-            url: Optional URL to navigate to before fetching the semantic tree.
+            url: Optional URL to navigate to before fetching the semantic tree. An empty string is treated as omitted.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
             backend_node_id: Optional backend node ID to get the tree for a specific element instead of the document root. 0 is treated as omitted.
             max_depth: Optional maximum depth of the tree to return. Useful for exploring high-level structure first.
