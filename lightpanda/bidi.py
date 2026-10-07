@@ -1,8 +1,9 @@
-"""WebDriver BiDi: run ``lightpanda serve --protocol webdriver`` for Selenium and co.
+"""WebDriver: run ``lightpanda serve --protocol webdriver`` for Selenium and co.
 
-:class:`BiDiServer` spawns the browser's WebDriver BiDi server on a free
-localhost port and owns the process; :class:`AsyncBiDiServer` is the asyncio
-twin. See :class:`BiDiServer` for what the browser serves.
+:class:`BiDiServer` spawns the browser's WebDriver server (classic and BiDi)
+on a free localhost port and owns the process; :class:`AsyncBiDiServer` is the
+asyncio twin. ``WebDriverServer`` / ``AsyncWebDriverServer`` are aliases. See
+:class:`BiDiServer` for what the browser serves.
 """
 
 from __future__ import annotations
@@ -15,35 +16,34 @@ from .client import _HOST, _documented
 
 @_documented
 class BiDiServer(_ServeProcess):
-    """A lightpanda process serving WebDriver BiDi on 127.0.0.1.
+    """A lightpanda process serving WebDriver, classic and BiDi, on 127.0.0.1.
+
+    Also importable as ``WebDriverServer``.
 
     ```python
     from lightpanda import BiDiServer
     from selenium import webdriver
-    from selenium.webdriver.common.options import ArgOptions
-
-    options = ArgOptions()
-    options.web_socket_url = True  # ask for a WebDriver BiDi session
+    from selenium.webdriver.common.by import By
 
     with BiDiServer() as server:
-        driver = webdriver.Remote(command_executor=server.http_endpoint, options=options)
-        context = driver.browsing_context.create(type="tab")
-        driver.browsing_context.navigate(context=context, url="https://example.com", wait="complete")
-        print(driver.script.execute("() => document.title", context_id=context)["value"])
+        # Selenium requires an options object; Lightpanda accepts any browser's.
+        driver = webdriver.Remote(command_executor=server.http_endpoint, options=webdriver.ChromeOptions())
+        driver.get("https://example.com")
+        print(driver.find_element(By.CSS_SELECTOR, "h1").text)
         driver.quit()
     ```
 
     :attr:`http_endpoint` is Selenium's ``command_executor``. The browser
-    serves the BiDi modules (``session``, ``browser``, ``browsingContext``,
-    ``script``, ``input``) over the WebSocket plus the classic session
-    bootstrap (``GET /status``, ``POST /session`` with the ``webSocketUrl``
-    capability, ``DELETE /session/<id>``); other classic WebDriver commands
-    such as Selenium's ``driver.get`` or ``find_element`` are not served, so
-    drive the page through ``driver.browsing_context`` and ``driver.script``
-    with an explicit context, created first as above. Pass
-    ``args=["--protocol", "cdp"]`` to serve CDP on the same port as well
-    (``--protocol`` is additive). The process is stopped by :meth:`close` /
-    leaving the ``with`` block, and on Linux also when the interpreter dies.
+    serves classic WebDriver over HTTP (navigation, element lookup and
+    interaction, script execution, actions, cookies) and, for a session
+    created with the ``webSocketUrl`` capability (Selenium's
+    ``options.web_socket_url = True``), the BiDi modules (``session``,
+    ``browser``, ``browsingContext``, ``script``, ``input``) over the
+    WebSocket, reached through ``driver.browsing_context`` and
+    ``driver.script``. Pass ``args=["--protocol", "cdp"]`` to serve CDP on the
+    same port as well (``--protocol`` is additive). The process is stopped by
+    :meth:`close` / leaving the ``with`` block, and on Linux also when the
+    interpreter dies.
     """
 
     _protocol = ("--protocol", "webdriver")
@@ -82,4 +82,10 @@ class AsyncBiDiServer(_AsyncServeProcess[BiDiServer]):
         return await asyncio.to_thread(self._started().status)
 
 
-__all__ = ["BiDiServer", "AsyncBiDiServer"]
+WebDriverServer = BiDiServer
+"""Alias of :class:`BiDiServer`: the same server speaks classic WebDriver too."""
+
+AsyncWebDriverServer = AsyncBiDiServer
+"""Alias of :class:`AsyncBiDiServer`."""
+
+__all__ = ["BiDiServer", "AsyncBiDiServer", "WebDriverServer", "AsyncWebDriverServer"]

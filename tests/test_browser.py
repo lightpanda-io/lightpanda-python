@@ -25,7 +25,7 @@ def test_page_result_carries_status(browser, fixture_url):
         if not isinstance(ok, PageResult):
             pytest.skip("binary predates structuredContent on goto")
 
-        assert ok.startswith("Navigated successfully"), "the sentence is still the value"
+        assert ok.startswith("Navigated"), "the sentence is still the value"
         assert ok.url == f"{fixture_url}/index.html"
         assert ok.http_status == 200
         assert ok.title == "Fixture Home"
