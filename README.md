@@ -87,36 +87,37 @@ cannot serve MCP and CDP from the same one). The package itself needs only
 Python's standard library; Playwright is a dev-only test dependency and
 `connect_over_cdp` never downloads a browser.
 
-## Drive it with Selenium (WebDriver BiDi)
+## Drive it with Selenium (WebDriver)
 
-The browser also speaks [WebDriver BiDi](https://w3c.github.io/webdriver-bidi/).
-`BiDiServer` starts `lightpanda serve --protocol webdriver` and hands you the
-URL Selenium's `webdriver.Remote` takes as `command_executor`:
+The browser also speaks [WebDriver](https://www.w3.org/TR/webdriver2/), both
+classic and [BiDi](https://w3c.github.io/webdriver-bidi/). `WebDriverServer`
+starts `lightpanda serve --protocol webdriver` and hands you the URL
+Selenium's `webdriver.Remote` takes as `command_executor`, so no chromedriver
+is involved:
 
 ```python
-from lightpanda import BiDiServer
+from lightpanda import WebDriverServer
 from selenium import webdriver
-from selenium.webdriver.common.options import ArgOptions
+from selenium.webdriver.common.by import By
 
-options = ArgOptions()
-options.web_socket_url = True  # ask for a WebDriver BiDi session
-
-with BiDiServer() as server:
-    driver = webdriver.Remote(command_executor=server.http_endpoint, options=options)
-    context = driver.browsing_context.create(type="tab")
-    driver.browsing_context.navigate(context=context, url="https://example.com", wait="complete")
-    print(driver.script.execute("() => document.title", context_id=context)["value"])
+with WebDriverServer() as server:
+    # Selenium requires an options object; Lightpanda accepts any browser's.
+    driver = webdriver.Remote(command_executor=server.http_endpoint, options=webdriver.ChromeOptions())
+    driver.get("https://example.com")
+    print(driver.find_element(By.CSS_SELECTOR, "h1").text)
     driver.quit()
 ```
 
-`AsyncBiDiServer` is the asyncio twin, and `server.bidi_endpoint`
+In a pytest suite, start the server once in a session-scoped fixture and open
+a driver per test; with pytest-xdist each worker gets its own server on its
+own free port.
+
+Set `options.web_socket_url = True` to also get a WebDriver BiDi session and
+use `driver.browsing_context` / `driver.script`. `server.bidi_endpoint`
 (`ws://127.0.0.1:<port>/session`) is the raw BiDi WebSocket for clients that
-speak the protocol directly. The browser serves the BiDi modules plus the
-classic session bootstrap Selenium needs, not the classic WebDriver
-commands: `driver.get`, `find_element` and friends are not implemented, so
-drive the page through `driver.browsing_context` and `driver.script` with an
-explicit context, created first as above. Pass `args=["--protocol", "cdp"]`
-to serve CDP on the same port as well.
+speak the protocol directly. `WebDriverServer` is an alias of `BiDiServer`,
+`AsyncWebDriverServer` (alias of `AsyncBiDiServer`) is the asyncio twin, and
+`args=["--protocol", "cdp"]` serves CDP on the same port as well.
 
 ## Respecting robots.txt
 
