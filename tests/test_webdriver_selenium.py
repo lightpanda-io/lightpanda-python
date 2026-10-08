@@ -1,4 +1,4 @@
-"""Drive a BiDiServer with Selenium, over classic WebDriver and over BiDi.
+"""Drive a WebDriverServer with Selenium, over classic WebDriver and over BiDi.
 Selenium is a dev-only dependency: `webdriver.Remote` needs its pip package,
 not a driver or browser download, and these tests skip when it is not
 installed."""
@@ -9,15 +9,9 @@ webdriver = pytest.importorskip("selenium.webdriver")
 from selenium.webdriver.common.by import By  # noqa: E402
 from selenium.webdriver.common.options import ArgOptions  # noqa: E402
 
-from lightpanda import BiDiServer, WebDriverServer  # noqa: E402
 
-
-def test_webdriver_server_alias():
-    assert WebDriverServer is BiDiServer
-
-
-def test_selenium_classic_session(bidi_server, fixture_url):
-    driver = webdriver.Remote(command_executor=bidi_server.http_endpoint, options=webdriver.ChromeOptions())
+def test_selenium_classic_session(webdriver_server, fixture_url):
+    driver = webdriver.Remote(command_executor=webdriver_server.http_endpoint, options=webdriver.ChromeOptions())
     try:
         driver.get(f"{fixture_url}/index.html")
         assert driver.title == "Fixture Home"
@@ -36,13 +30,13 @@ def test_selenium_classic_session(bidi_server, fixture_url):
         driver.quit()  # DELETE /session/<id>
 
 
-def test_selenium_bidi_session(bidi_server, fixture_url):
+def test_selenium_bidi_session(webdriver_server, fixture_url):
     options = ArgOptions()
     options.web_socket_url = True
-    driver = webdriver.Remote(command_executor=bidi_server.http_endpoint, options=options)
+    driver = webdriver.Remote(command_executor=webdriver_server.http_endpoint, options=options)
     try:
         assert driver.caps["browserName"] == "Lightpanda"
-        assert driver.caps["webSocketUrl"] == f"{bidi_server.bidi_endpoint}/{driver.session_id}"
+        assert driver.caps["webSocketUrl"] == f"{webdriver_server.bidi_endpoint}/{driver.session_id}"
 
         assert driver.browsing_context.get_tree() == []  # first BiDi access opens the websocket
         context = driver.browsing_context.create(type="tab")

@@ -1,9 +1,8 @@
 """WebDriver: run ``lightpanda serve --protocol webdriver`` for Selenium and co.
 
-:class:`BiDiServer` spawns the browser's WebDriver server (classic and BiDi)
-on a free localhost port and owns the process; :class:`AsyncBiDiServer` is the
-asyncio twin. ``WebDriverServer`` / ``AsyncWebDriverServer`` are aliases. See
-:class:`BiDiServer` for what the browser serves.
+:class:`WebDriverServer` spawns the browser's WebDriver server (classic and BiDi)
+on a free localhost port and owns the process; :class:`AsyncWebDriverServer` is the
+asyncio twin. See :class:`WebDriverServer` for what the browser serves.
 """
 
 from __future__ import annotations
@@ -15,17 +14,15 @@ from .client import _HOST, _documented
 
 
 @_documented
-class BiDiServer(_ServeProcess):
+class WebDriverServer(_ServeProcess):
     """A lightpanda process serving WebDriver, classic and BiDi, on 127.0.0.1.
 
-    Also importable as ``WebDriverServer``.
-
     ```python
-    from lightpanda import BiDiServer
+    from lightpanda import WebDriverServer
     from selenium import webdriver
     from selenium.webdriver.common.by import By
 
-    with BiDiServer() as server:
+    with WebDriverServer() as server:
         # Selenium requires an options object; Lightpanda accepts any browser's.
         driver = webdriver.Remote(command_executor=server.http_endpoint, options=webdriver.ChromeOptions())
         driver.get("https://example.com")
@@ -66,26 +63,20 @@ class BiDiServer(_ServeProcess):
 
 
 @_documented
-class AsyncBiDiServer(_AsyncServeProcess[BiDiServer]):
-    """:class:`BiDiServer` for asyncio: the process is spawned by
+class AsyncWebDriverServer(_AsyncServeProcess[WebDriverServer]):
+    """:class:`WebDriverServer` for asyncio: the process is spawned by
     :meth:`start`, called automatically on ``async with`` entry."""
 
-    _sync_cls = BiDiServer
+    _sync_cls = WebDriverServer
 
     @property
     def bidi_endpoint(self) -> str:
-        """See :attr:`BiDiServer.bidi_endpoint`."""
+        """See :attr:`WebDriverServer.bidi_endpoint`."""
         return self._started().bidi_endpoint
 
     async def status(self) -> dict:
-        """See :meth:`BiDiServer.status`."""
+        """See :meth:`WebDriverServer.status`."""
         return await asyncio.to_thread(self._started().status)
 
 
-WebDriverServer = BiDiServer
-"""Alias of :class:`BiDiServer`: the same server speaks classic WebDriver too."""
-
-AsyncWebDriverServer = AsyncBiDiServer
-"""Alias of :class:`AsyncBiDiServer`."""
-
-__all__ = ["BiDiServer", "AsyncBiDiServer", "WebDriverServer", "AsyncWebDriverServer"]
+__all__ = ["WebDriverServer", "AsyncWebDriverServer"]

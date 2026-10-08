@@ -1,4 +1,4 @@
-"""Shared shape of the ``lightpanda serve`` wrappers (``CDPServer``, ``BiDiServer``).
+"""Shared shape of the ``lightpanda serve`` wrappers (``CDPServer``, ``WebDriverServer``).
 
 A serve wrapper owns one ``lightpanda serve`` process on a localhost port
 and hands out endpoints for third-party clients; the subclasses differ only

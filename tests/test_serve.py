@@ -1,14 +1,14 @@
 """Lifecycle shared by the `lightpanda serve` wrappers, tested once per
-class pair. Protocol-specific behaviour lives in test_cdp.py / test_bidi.py."""
+class pair. Protocol-specific behaviour lives in test_cdp.py / test_webdriver.py."""
 
 import pytest
 from conftest import alive
 
-from lightpanda import AsyncBiDiServer, AsyncCDPServer, BiDiServer, CDPServer, LightpandaError
+from lightpanda import AsyncCDPServer, AsyncWebDriverServer, CDPServer, LightpandaError, WebDriverServer
 
 PAIRS = [
     pytest.param(CDPServer, AsyncCDPServer, "version", "ws_endpoint", id="cdp"),
-    pytest.param(BiDiServer, AsyncBiDiServer, "status", "bidi_endpoint", id="bidi"),
+    pytest.param(WebDriverServer, AsyncWebDriverServer, "status", "bidi_endpoint", id="bidi"),
 ]
 
 
