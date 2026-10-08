@@ -115,8 +115,7 @@ own free port.
 Set `options.web_socket_url = True` to also get a WebDriver BiDi session and
 use `driver.browsing_context` / `driver.script`. `server.bidi_endpoint`
 (`ws://127.0.0.1:<port>/session`) is the raw BiDi WebSocket for clients that
-speak the protocol directly. `WebDriverServer` is an alias of `BiDiServer`,
-`AsyncWebDriverServer` (alias of `AsyncBiDiServer`) is the asyncio twin, and
+speak the protocol directly. `AsyncWebDriverServer` is the asyncio twin, and
 `args=["--protocol", "cdp"]` serves CDP on the same port as well.
 
 ## Respecting robots.txt
@@ -127,7 +126,7 @@ through `args=`:
 
 ```python
 Browser(args=["--obey-robots"])                    # also AsyncBrowser
-CDPServer(args=["--obey-robots"])                  # also BiDiServer, and the async twins
+CDPServer(args=["--obey-robots"])                  # also WebDriverServer, and the async twins
 run_script("saved.js", args=["--obey-robots"])
 ```
 

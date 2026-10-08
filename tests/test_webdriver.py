@@ -1,12 +1,12 @@
-"""BiDiServer's endpoints and the WebDriver session bootstrap they promise,
+"""WebDriverServer's endpoints and the WebDriver session bootstrap they promise,
 with the standard library only. A real BiDi client is exercised in
-test_bidi_selenium.py; the shared process lifecycle in test_serve.py."""
+test_webdriver_selenium.py; the shared process lifecycle in test_serve.py."""
 
 import json
 import urllib.error
 import urllib.request
 
-from lightpanda import BiDiServer
+from lightpanda import WebDriverServer
 
 BIDI_CAPS = {"capabilities": {"alwaysMatch": {"webSocketUrl": True}}}
 
@@ -29,26 +29,26 @@ def _with_session(server):
     return value, lambda: _request("DELETE", f"{server.http_endpoint}/session/{value['sessionId']}")
 
 
-def test_endpoints_and_status(bidi_server):
-    assert bidi_server.port > 0
-    assert bidi_server.bidi_endpoint == f"ws://127.0.0.1:{bidi_server.port}/session"
-    assert bidi_server.http_endpoint == f"http://127.0.0.1:{bidi_server.port}"
-    assert bidi_server.status() == {"ready": True, "message": ""}
+def test_endpoints_and_status(webdriver_server):
+    assert webdriver_server.port > 0
+    assert webdriver_server.bidi_endpoint == f"ws://127.0.0.1:{webdriver_server.port}/session"
+    assert webdriver_server.http_endpoint == f"http://127.0.0.1:{webdriver_server.port}"
+    assert webdriver_server.status() == {"ready": True, "message": ""}
 
 
-def test_session_bootstrap_advertises_bidi_endpoint(bidi_server):
-    value, done = _with_session(bidi_server)
+def test_session_bootstrap_advertises_bidi_endpoint(webdriver_server):
+    value, done = _with_session(webdriver_server)
     try:
         assert value["capabilities"]["browserName"] == "Lightpanda"
-        assert value["capabilities"]["webSocketUrl"] == f"{bidi_server.bidi_endpoint}/{value['sessionId']}"
+        assert value["capabilities"]["webSocketUrl"] == f"{webdriver_server.bidi_endpoint}/{value['sessionId']}"
     finally:
         assert done() == (200, {"value": None})
 
 
-def test_extra_args_passthrough(bidi_server, binary):
-    assert _request("GET", f"{bidi_server.http_endpoint}/json/version")[0] == 404  # CDP off by default
+def test_extra_args_passthrough(webdriver_server, binary):
+    assert _request("GET", f"{webdriver_server.http_endpoint}/json/version")[0] == 404  # CDP off by default
     args = ["--protocol", "cdp", "--advertise-host", "localhost"]
-    with BiDiServer(binary=binary, args=args) as server:
+    with WebDriverServer(binary=binary, args=args) as server:
         status, version = _request("GET", f"{server.http_endpoint}/json/version")  # --protocol is additive
         assert status == 200 and version["Browser"].startswith("Lightpanda")
         value, done = _with_session(server)
