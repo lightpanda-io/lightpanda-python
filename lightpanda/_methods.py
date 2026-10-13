@@ -20,14 +20,15 @@ class SessionMethods:
     def call(self, tool: str, **kwargs: Any) -> Any:
         raise NotImplementedError
 
-    def classify(self, *, questions: str | dict | list, selector: str | None = None) -> Any:
+    def classify(self, *, questions: str | dict | list, selector: str | None = None, presets: bool | None = None) -> Any:
         """Classify the page or an element subtree using TypeSafe System One (Jev). `questions` is a JSON array of categories (returns the one that fits), or a JSON object of questions keyed by the name each answer comes back under: `true` for a preset (isBlocked, isCaptcha, isConsentWall, isEmptyCatalog, isErrorPage, isLoginWall, isPaywall, isUnsupportedBrowser, isLoading; an empty object `{}` asks all of them), a string for a yes/no question (returns its probability), `{question, options}` for a choice, or `{question, levels}` for a score on 2-10 levels ordered low to high (returns the `score` between level indices, the nearest `level`, and per-level `probabilities`). A missing answer is null.
 
         Args:
             questions: JSON string: array of categories, or object of questions (`{}` for every preset)
             selector: Optional CSS selector to classify a specific element subtree instead of the full page
+            presets: Also ask every preset in the same call, each answered under its own name beside the questions. Needs the object form.
         """
-        return self.call("classify", questions=questions, selector=selector)
+        return self.call("classify", questions=questions, selector=selector, presets=presets)
     def click(self, *, selector: str | None = None, backend_node_id: int | None = None) -> PageResult:
         """Click on an interactive element. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Returns the current page URL and title after the click.
 
@@ -480,14 +481,15 @@ class AsyncSessionMethods:
     async def call(self, tool: str, **kwargs: Any) -> Any:
         raise NotImplementedError
 
-    async def classify(self, *, questions: str | dict | list, selector: str | None = None) -> Any:
+    async def classify(self, *, questions: str | dict | list, selector: str | None = None, presets: bool | None = None) -> Any:
         """Classify the page or an element subtree using TypeSafe System One (Jev). `questions` is a JSON array of categories (returns the one that fits), or a JSON object of questions keyed by the name each answer comes back under: `true` for a preset (isBlocked, isCaptcha, isConsentWall, isEmptyCatalog, isErrorPage, isLoginWall, isPaywall, isUnsupportedBrowser, isLoading; an empty object `{}` asks all of them), a string for a yes/no question (returns its probability), `{question, options}` for a choice, or `{question, levels}` for a score on 2-10 levels ordered low to high (returns the `score` between level indices, the nearest `level`, and per-level `probabilities`). A missing answer is null.
 
         Args:
             questions: JSON string: array of categories, or object of questions (`{}` for every preset)
             selector: Optional CSS selector to classify a specific element subtree instead of the full page
+            presets: Also ask every preset in the same call, each answered under its own name beside the questions. Needs the object form.
         """
-        return await self.call("classify", questions=questions, selector=selector)
+        return await self.call("classify", questions=questions, selector=selector, presets=presets)
     async def click(self, *, selector: str | None = None, backend_node_id: int | None = None) -> PageResult:
         """Click on an interactive element. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Returns the current page URL and title after the click.
 

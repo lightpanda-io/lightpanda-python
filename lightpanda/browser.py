@@ -17,7 +17,7 @@ import json
 import os
 import re
 import subprocess
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
@@ -81,6 +81,9 @@ class PageVerdict:
         print("skipping:", verdict.reason)  # is_paywall
     verdict.scores["is_blocked"]        # 0.03
     ```
+
+    Questions passed to :meth:`Session.judge` are asked in the same call, and
+    their answers land in :attr:`answers`.
     """
 
     is_blocked: bool
@@ -105,9 +108,15 @@ class PageVerdict:
     text). A page that is blank while it loads says nothing, so this misses it."""
     scores: dict[str, float | None]
     """Each check's probability, keyed by its attribute name."""
+    answers: dict
+    """The answers to the questions passed to :meth:`Session.judge`, keyed as
+    asked and shaped as :meth:`Session.classify` returns them. Empty when none
+    were passed."""
 
-    def __init__(self, answers: dict, threshold: float):
-        self.scores = {_snake(preset): score for preset, score in answers.items()}
+    def __init__(self, answers: dict, threshold: float, asked: Iterable[str] = ()):
+        asked = set(asked)
+        self.answers = {key: answers.get(key) for key in asked}
+        self.scores = {_snake(preset): score for preset, score in answers.items() if preset not in asked}
         for attr, score in self.scores.items():
             setattr(self, attr, score is not None and score >= threshold)
 
@@ -283,17 +292,30 @@ class Session(SessionMethods):
             return [Element(node, self) for node in parsed]
         return parsed
 
-    def judge(self, *, threshold: float = 0.5) -> PageVerdict:
+    def judge(self, *, questions: dict | None = None, threshold: float = 0.5) -> PageVerdict:
         """Judge whether the page is worth reading: blocked, a login wall, a
         paywall, an error page and the rest of the ``classify`` presets, in a
         single call.
 
+        Your own questions can ride along in that call instead of a second
+        :meth:`classify`, which costs a whole round trip to the model; their
+        answers land in :attr:`PageVerdict.answers`:
+
+        ```python
+        verdict = page.judge(questions={"has_price": "Does the page show a price?"})
+        if verdict.ok:
+            print(verdict.answers["has_price"])   # 0.99
+        ```
+
         Args:
+            questions: Questions in the object form :meth:`classify` takes.
             threshold: The probability at which a check counts as true.
         """
-        # An empty questions object asks the browser for every preset.
-        answers = self.call("classify", questions={})
-        return PageVerdict(answers, threshold)
+        if not questions:
+            # An empty questions object asks the browser for every preset.
+            return PageVerdict(self.call("classify", questions={}), threshold)
+        answers = self.call("classify", questions=questions, presets=True)
+        return PageVerdict(answers, threshold, asked=questions)
 
     def _resolve(self, attr: str) -> str | None:
         """The tool name behind a snake_case public attribute, if any."""

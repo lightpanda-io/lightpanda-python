@@ -109,6 +109,21 @@ def test_judge(classify_browser, fixture_url):
         assert page.judge(threshold=0.95).reason is None
 
 
+def test_judge_with_questions(classify_browser, fixture_url):
+    with classify_browser.new_session() as page:
+        page.goto(url=f"{fixture_url}/index.html")
+        verdict = page.judge(
+            questions={
+                "has_price": "Does the page show a price?",
+                "kind": {"question": "What kind of page?", "options": ["home", "article"]},
+            }
+        )
+        assert verdict.answers["has_price"] == 0.9
+        assert verdict.answers["kind"]["choice"] == "home"
+        assert "has_price" not in verdict.scores and "kind" not in verdict.scores
+        assert verdict.is_login_wall and not verdict.ok
+
+
 async def test_judge_async(classify_browser, fixture_url):
     from lightpanda import AsyncBrowser
 

@@ -58,9 +58,9 @@ class AsyncSession(AsyncSessionMethods):
             return [AsyncElement(node, self) if isinstance(node, Element) else node for node in result]
         return result
 
-    async def judge(self, *, threshold: float = 0.5) -> PageVerdict:
+    async def judge(self, *, questions: dict | None = None, threshold: float = 0.5) -> PageVerdict:
         """Judge whether the page is worth reading; see :meth:`Session.judge`."""
-        return await _run(self._executor, self._session.judge, threshold=threshold)
+        return await _run(self._executor, self._session.judge, questions=questions, threshold=threshold)
 
     def __getattr__(self, attr: str):
         session = self.__dict__.get("_session")
