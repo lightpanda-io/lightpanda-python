@@ -238,12 +238,12 @@ else:
 ```
 
 ```
-keep  books.toscrape.com/catalogue/a-light-in-  product  price 0.99  content plenty (1.90)  [load 1.34s, jev 0.50s]
-keep  quotes.toscrape.com/js/                   listing  price 0.01  content plenty (1.92)  [load 0.83s, jev 0.35s]
-keep  en.wikipedia.org/wiki/Headless_browser    article  price 0.02  content plenty (1.78)  [load 0.64s, jev 0.37s]
-skip  news.ycombinator.com/login                is_login_wall                           [load 0.64s, jev 0.32s]
-skip  en.wikipedia.org/w/index.php?search=xqzz  is_empty_catalog                        [load 1.39s, jev 0.25s]
-skip  www.g2.com/                               is_captcha                              [load 0.19s, jev 0.24s]
+keep  books.toscrape.com/catalogue/a-light-in-  product  price 0.99  content plenty (1.94)  [load 1.11s, jev 0.37s]
+keep  quotes.toscrape.com/js/                   listing  price 0.01  content plenty (1.91)  [load 0.95s, jev 0.23s]
+keep  en.wikipedia.org/wiki/Headless_browser    article  price 0.02  content plenty (1.74)  [load 0.59s, jev 0.25s]
+skip  news.ycombinator.com/login                is_login_wall                           [load 0.57s, jev 0.23s]
+skip  en.wikipedia.org/w/index.php?search=xqzz  is_empty_catalog                        [load 1.18s, jev 0.26s]
+skip  www.g2.com/                               is_captcha                              [load 0.16s, jev 0.20s]
 ```
 
 A score falls between its levels (0 = none, 2 = plenty). Scores vary a little
