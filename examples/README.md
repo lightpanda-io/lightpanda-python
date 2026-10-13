@@ -220,34 +220,35 @@ later run instant.
 
 A 200 response can still be a login wall, a CAPTCHA or an empty search.
 `page.judge()` asks TypeSafe's page model about the rendered page and says
-whether to skip it, and why. For the pages worth keeping, `page.classify`
-answers your own questions in one call: yes/no, a choice, or a score.
+whether to skip it, and why. Your own questions ride along in the same call,
+yes/no, a choice, or a score, so each page costs one round trip:
 
 ```python
-verdict = page.judge()
+verdict = page.judge(questions={
+    "has_price": "Does the page show a price?",                     # -> 0.99
+    "kind": {"question": "What kind of page is this?",
+             "options": ["product", "listing", "article", "other"]},  # -> {"choice": "product", ...}
+    "content": {"question": "How much useful content would a scraper get from this page?",
+                "levels": ["none", "little", "plenty"]},             # -> {"level": "plenty", "score": 1.90, ...}
+})
 if not verdict.ok:
-    print("skip", verdict.reason)          # is_captcha
+    print("skip", verdict.reason)           # is_captcha
 else:
-    answers = page.classify(questions={
-        "has_price": "Does the page show a price?",                     # -> 0.99
-        "kind": {"question": "What kind of page is this?",
-                 "options": ["product", "listing", "article", "other"]},  # -> {"choice": "product", ...}
-        "content": {"question": "How much useful content would a scraper get from this page?",
-                    "levels": ["none", "little", "plenty"]},             # -> {"level": "plenty", "score": 1.94, ...}
-    })
+    print(verdict.answers["kind"]["choice"])  # product
 ```
 
 ```
-keep  books.toscrape.com/catalogue/a-light-in-  product  price 0.99  content plenty (1.94)
-keep  quotes.toscrape.com/js/                   listing  price 0.01  content plenty (1.90)
-keep  en.wikipedia.org/wiki/Headless_browser    article  price 0.02  content plenty (1.52)
-skip  news.ycombinator.com/login                is_login_wall
-skip  en.wikipedia.org/w/index.php?search=xqzz  is_empty_catalog
-skip  www.g2.com/                               is_captcha
+keep  books.toscrape.com/catalogue/a-light-in-  product  price 0.99  content plenty (1.90)  [load 1.34s, jev 0.50s]
+keep  quotes.toscrape.com/js/                   listing  price 0.01  content plenty (1.92)  [load 0.83s, jev 0.35s]
+keep  en.wikipedia.org/wiki/Headless_browser    article  price 0.02  content plenty (1.78)  [load 0.64s, jev 0.37s]
+skip  news.ycombinator.com/login                is_login_wall                           [load 0.64s, jev 0.32s]
+skip  en.wikipedia.org/w/index.php?search=xqzz  is_empty_catalog                        [load 1.39s, jev 0.25s]
+skip  www.g2.com/                               is_captcha                              [load 0.19s, jev 0.24s]
 ```
 
 A score falls between its levels (0 = none, 2 = plenty). Scores vary a little
-between runs.
+between runs. The `jev` time is the whole call: the browser reading the page,
+then the round trip to TypeSafe, which reuses one connection after the first.
 
 Needs `TYPESAFE_API_KEY`, and a browser with the `classify` tool. Until a
 release ships both, the script installs this checkout rather than the PyPI

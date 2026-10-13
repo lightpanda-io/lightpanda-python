@@ -6,11 +6,13 @@
 # [tool.uv.sources]
 # lightpanda = { path = "..", editable = true }
 # ///
-"""Triage a crawl: skip pages that are walls, CAPTCHAs or empty searches with
-``page.judge()``, then ask the rest your own questions with ``page.classify``.
+"""Triage a crawl: ``page.judge()`` says whether each page is a wall, a CAPTCHA
+or an empty search, and answers your own questions in the same call.
 
 Needs TYPESAFE_API_KEY. Run:  uv run examples/classify_pages.py
 """
+
+from time import perf_counter
 
 from lightpanda import Browser
 
@@ -38,22 +40,30 @@ QUESTIONS = {
     },
 }
 
+
+def timed(call, **kwargs):
+    """The call's result and the seconds it took."""
+    start = perf_counter()
+    return call(**kwargs), perf_counter() - start
+
+
 with Browser() as browser:
     for url in URLS:
         name = url.split("://", 1)[1][:40]
         with browser.new_session() as page:
-            page.goto(url=url)
-
-            verdict = page.judge()
+            _, load = timed(page.goto, url=url)
+            # One call: every preset, plus our own questions.
+            verdict, jev = timed(page.judge, questions=QUESTIONS)
+            times = f"[load {load:.2f}s, jev {jev:.2f}s]"
             if not verdict.ok:
-                print(f"skip  {name:<40}  {verdict.reason}")
+                print(f"skip  {name:<40}  {verdict.reason:<38}  {times}")
                 continue
 
-            answers = page.classify(questions=QUESTIONS)
+            answers = verdict.answers
             kind = answers["kind"]["choice"]
             price = answers["has_price"]
             content = answers["content"]
             print(
                 f"keep  {name:<40}  {kind:<8} price {price:.2f}  "
-                f"content {content['level']} ({content['score']:.2f})"
+                f"content {content['level']} ({content['score']:.2f})  {times}"
             )
