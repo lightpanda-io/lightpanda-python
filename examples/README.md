@@ -261,7 +261,7 @@ LIGHTPANDA_BIN=../browser/zig-out/bin/lightpanda uv run examples/classify_pages.
 
 ## `triage_crawl.py` — crawl real sites in parallel and act on what Jev sees
 
-The same `judge()` call over 29 real pages, six browsers at a time. The
+The same `judge()` call over 29 real pages, six at a time in one browser. The
 verdict decides what the crawler does next: accept a cookie wall and look
 again, back off when the site says we are going too fast, wait for a page
 that is still loading, or skip the page and say why. "Too fast" is our own
@@ -283,53 +283,53 @@ elif verdict.is_consent_wall:
 ```
 
 ```
-keep  docs.python.org/3/library/asyncio.html        docs                    0.64s
-keep  developer.mozilla.org/en-US/docs/Web/API/Fet  docs                    0.84s
-keep  en.wikipedia.org/wiki/Headless_browser        article                 0.91s
-keep  quotes.toscrape.com/js/                       listing                 1.25s
-keep  en.wikipedia.org/wiki/Web_scraping            article                 1.56s
-keep  books.toscrape.com/catalogue/a-light-in-the-  product                 1.58s
-keep  lobste.rs/                                    listing                 1.00s
-keep  github.com/lightpanda-io/browser              listing                 1.62s
-keep  www.spiegel.de/                               listing                 1.81s
-skip  github.com/settings/profile                   login wall              0.77s
-skip  www.g2.com/                                   blocked                 0.37s
-skip  www.wsj.com/                                  captcha                 0.42s
-skip  www.linkedin.com/feed/                        login wall              1.65s
-keep  www.indeed.com/                               search                  2.93s  <- accepted cookies
-skip  pypi.org/project/lightpanda/                  captcha                 0.44s
-skip  stackoverflow.com/questions/231767/what-does  blocked                 0.47s
-skip  www.zeit.de/index                             error page              0.36s
-skip  www.economist.com/leaders/2024/01/04/what-to  blocked                 1.48s
-skip  www.npmjs.com/search?q=xqzzzvqkplorbt         empty catalog           0.55s
-skip  web.whatsapp.com/                             unsupported browser     0.75s
-keep  news.ycombinator.com/                         listing                 4.72s  <- backed off
-skip  news.ycombinator.com/login                    login wall              4.32s  <- backed off
-skip  github.com/search?q=xqzzzvqkplorbt&type=repo  empty catalog           1.05s
-skip  arxiv.org/abs/1706.03762                      error page              0.27s
-skip  www.python.org/no-such-page                   error page              0.78s
-skip  www.ebay.com/sch/i.html?_nkw=xqzzzvqkplorbt   error page              0.61s
-skip  en.wikipedia.org/w/index.php?search=xqzzzvqk  empty catalog           1.25s
-skip  github.com/lightpanda-io/does-not-exist       error page              1.13s
-keep  news.ycombinator.com/newest                   listing                 11.11s  <- backed off, backed off
+keep  docs.python.org/3/library/asyncio.html        docs                    0.73s
+keep  developer.mozilla.org/en-US/docs/Web/API/Fet  docs                    0.95s
+keep  en.wikipedia.org/wiki/Web_scraping            article                 1.03s
+keep  en.wikipedia.org/wiki/Headless_browser        article                 1.04s
+keep  quotes.toscrape.com/js/                       listing                 1.17s
+keep  books.toscrape.com/catalogue/a-light-in-the-  product                 1.28s
+keep  lobste.rs/                                    listing                 0.85s
+keep  www.spiegel.de/                               listing                 1.60s
+keep  github.com/lightpanda-io/browser              listing                 2.54s
+skip  github.com/settings/profile                   login wall              1.14s
+keep  www.indeed.com/                               search                  2.84s  <- accepted cookies
+skip  www.g2.com/                                   blocked                 0.42s
+skip  www.wsj.com/                                  blocked                 0.41s
+skip  www.linkedin.com/feed/                        login wall              1.49s
+skip  www.economist.com/leaders/2024/01/04/what-to  blocked                 0.60s
+skip  www.zeit.de/index                             error page              0.38s
+skip  stackoverflow.com/questions/231767/what-does  blocked                 0.43s
+keep  pypi.org/project/lightpanda/                  listing                 0.77s
+keep  news.ycombinator.com/                         listing                 4.54s  <- backed off
+keep  news.ycombinator.com/newest                   listing                 4.90s  <- backed off
+skip  news.ycombinator.com/login                    login wall              4.30s  <- backed off
+skip  www.npmjs.com/search?q=xqzzzvqkplorbt         empty catalog           0.98s
+skip  web.whatsapp.com/                             unsupported browser     1.12s
+skip  arxiv.org/abs/1706.03762                      error page              0.29s
+skip  www.python.org/no-such-page                   error page              0.66s
+skip  www.ebay.com/sch/i.html?_nkw=xqzzzvqkplorbt   error page              0.57s
+skip  github.com/search?q=xqzzzvqkplorbt&type=repo  empty catalog           1.74s
+skip  en.wikipedia.org/w/index.php?search=xqzzzvqk  empty catalog           1.63s
+skip  github.com/lightpanda-io/does-not-exist       error page              1.85s
 
-29 pages in 12.7s with 6 browsers (46.6s of page time): 12 kept, 17 skipped
-Jev: 34 calls, median 0.22s, p90 0.30s
-skipped: error page 5, login wall 3, blocked 3, empty catalog 3, captcha 2, unsupported browser 1
-acted:   backed off 4, accepted cookies 1
+29 pages in 8.2s with 6 crawlers (42.3s of page time): 13 kept, 16 skipped
+Jev: 33 calls, median 0.22s, p90 0.48s
+skipped: error page 5, blocked 4, login wall 3, empty catalog 3, unsupported browser 1
+acted:   backed off 3, accepted cookies 1
 ```
 
 What the skipped pages actually showed: Indeed's cookie wall is in Spanish,
 Zeit's is a German notice that it reserves its content against data mining,
-PyPI's is a Fastly challenge, arXiv's is a bare Varnish 403, eBay's is "Something
+arXiv's is a bare Varnish 403, eBay's is "Something
 went wrong on our end", and Stack Overflow's is empty. Hacker News rate-limits
 three tabs opened at once, and says so in a sentence the crawler had no rule for.
 
 Sites change and the model is not deterministic, so a run differs a little:
 how often Hacker News pushes back, or whether a challenge page scores as
-`blocked` or `captcha`. A browser loads one page at a time, which is why the
-script runs several. Known misses: Zillow's home page scores as an empty search,
-and Le Monde's front page leans paywall (0.71).
+`blocked` or `captcha`. Each crawler drives its own session, and the browser
+loads their pages in parallel. Known misses: Zillow's home page scores as an
+empty search, and Le Monde's front page leans paywall (0.71).
 
 Runs from this checkout against a local browser build, like `classify_pages.py`:
 

@@ -24,8 +24,8 @@ from time import perf_counter
 
 from lightpanda import AsyncBrowser, LightpandaError
 
-# A browser loads one page at a time, so a crawl runs several.
-BROWSERS = 6
+# Each crawler drives its own session: one browser loads their pages in parallel.
+CRAWLERS = 6
 
 URLS = [
     # content
@@ -163,12 +163,8 @@ async def main():
     results, jev_times = [], []
 
     start = perf_counter()
-    browsers = [AsyncBrowser() for _ in range(BROWSERS)]
-    try:
-        await asyncio.gather(*(b.start() for b in browsers))
-        await asyncio.gather(*(crawl(b, queue, results, jev_times) for b in browsers))
-    finally:
-        await asyncio.gather(*(b.close() for b in browsers))
+    async with AsyncBrowser() as browser:
+        await asyncio.gather(*(crawl(browser, queue, results, jev_times) for _ in range(CRAWLERS)))
     elapsed = perf_counter() - start
 
     outcomes = Counter(result for result, _, _ in results)
@@ -179,7 +175,7 @@ async def main():
 
     print()
     print(
-        f"{len(results)} pages in {elapsed:.1f}s with {BROWSERS} browsers "
+        f"{len(results)} pages in {elapsed:.1f}s with {CRAWLERS} crawlers "
         f"({page_time:.1f}s of page time): {kept} kept, {len(results) - kept} skipped"
     )
     print(
