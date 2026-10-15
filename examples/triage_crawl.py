@@ -9,8 +9,8 @@
 """Triage a crawl of real sites in parallel, and act on what Jev sees.
 
 Each page gets one ``page.judge()`` call: every wall check plus our own
-questions. The verdict decides what happens next: accept a cookie wall and
-look again, back off when the site says we are going too fast, wait for a
+questions. The verdict decides what happens next: back off when the site
+says we are going too fast, accept a cookie wall and look again, wait for a
 page that is still loading, or skip the page and say why.
 
 Needs TYPESAFE_API_KEY. Run:  uv run examples/triage_crawl.py
@@ -24,7 +24,7 @@ from time import perf_counter
 
 from lightpanda import AsyncBrowser, LightpandaError
 
-# Each crawler drives its own session: one browser loads their pages in parallel.
+# Pages loading at once, each in its own session of one browser.
 CRAWLERS = 6
 
 URLS = [
@@ -75,6 +75,7 @@ QUESTIONS = {
 ACCEPT = "/^(accept|aceptar|accepter|akzeptieren|agree|allow)/i"
 
 TTY = sys.stdout.isatty()
+jev_times = []
 
 
 def paint(text, color):
@@ -82,106 +83,98 @@ def paint(text, color):
     return f"\033[{codes[color]}m{text}\033[0m" if TTY else text
 
 
-def label(reason):
-    """is_empty_catalog -> empty catalog"""
-    return reason.removeprefix("is_").replace("_", " ")
-
-
-async def judge(page, jev_times):
+async def judge(page):
     start = perf_counter()
     verdict = await page.judge(questions=QUESTIONS)
     jev_times.append(perf_counter() - start)
     return verdict
 
 
-async def accept_cookies(page):
-    """Click the wall's accept button. False when there is none to click."""
-    found = await page.find_element(role="button", name=ACCEPT)
-    if not found:
-        return False
-    await page.click(backend_node_id=found[0]["backendNodeId"])
-    # Banners fade out after the click.
-    await page.wait_for_state(state="networkidle")
-    return True
+def rate_limited(verdict):
+    return verdict.answers["rate_limited"] >= 0.5
 
 
-async def visit(page, url, jev_times):
+async def visit(page, url):
     """Load `url`, judge it, act on the verdict. Returns (verdict, actions)."""
     actions = []
     await page.goto(url=url)
-    verdict = await judge(page, jev_times)
-    for _ in range(3):
-        if verdict.answers["rate_limited"] >= 0.5 and actions.count("backed off") < 2:
-            actions.append("backed off")
-            await asyncio.sleep(3 * actions.count("backed off"))
-            await page.goto(url=url)
-        elif verdict.is_consent_wall and "accepted cookies" not in actions and await accept_cookies(page):
-            actions.append("accepted cookies")
-        elif verdict.is_loading and "waited" not in actions:
-            actions.append("waited")
-            await page.wait_for_state(state="networkidle")
-        else:
+    verdict = await judge(page)
+
+    for attempt in (1, 2):
+        if not rate_limited(verdict):
             break
-        verdict = await judge(page, jev_times)
+        actions.append("backed off")
+        await asyncio.sleep(3 * attempt)
+        await page.goto(url=url)
+        verdict = await judge(page)
+
+    if verdict.is_consent_wall:
+        found = await page.find_element(role="button", name=ACCEPT)
+        if found:
+            actions.append("accepted cookies")
+            await page.click(backend_node_id=found[0]["backendNodeId"])
+            await page.wait_for_state(state="networkidle")  # banners fade out
+            verdict = await judge(page)
+
+    if verdict.is_loading:
+        actions.append("waited")
+        await page.wait_for_state(state="networkidle")
+        verdict = await judge(page)
+
     return verdict, actions
 
 
-def outcome(verdict):
-    """Either "kept" or why the page was skipped."""
-    if verdict.answers["rate_limited"] >= 0.5:
-        return "rate limited"
-    return "kept" if verdict.ok else label(verdict.reason)
-
-
-async def crawl(browser, queue, results, jev_times):
-    while not queue.empty():
-        url = queue.get_nowait()
-        name = url.split("://", 1)[1][:44]
+async def triage(browser, slots, url):
+    """Visit `url` once a slot is free, print a line, return (outcome, actions, seconds)."""
+    name = url.split("://", 1)[1][:44]
+    async with slots:
         start = perf_counter()
-        async with await browser.new_session() as page:
-            try:
-                verdict, actions = await visit(page, url, jev_times)
-            except LightpandaError as err:
-                print(f"{paint('fail', 'red')}  {name:<44}  {err}")
-                results.append(("failed", [], perf_counter() - start))
-                continue
+        try:
+            async with await browser.new_session() as page:
+                verdict, actions = await visit(page, url)
+        except LightpandaError as err:
+            print(f"{paint('fail', 'red')}  {name:<44}  {err}")
+            return "failed", [], perf_counter() - start
         took = perf_counter() - start
-        acted = paint(f"  <- {', '.join(actions)}", "yellow") if actions else ""
-        result = outcome(verdict)
-        if result == "kept":
-            line = f"{paint('keep', 'green')}  {name:<44}  {verdict.answers['kind']['choice']:<22}"
-        else:
-            line = f"{paint('skip', 'red')}  {name:<44}  {result:<22}"
-        print(f"{line}  {paint(f'{took:.2f}s', 'dim')}{acted}")
-        results.append((result, actions, took))
+
+    if rate_limited(verdict):
+        outcome = "rate limited"
+    elif verdict.ok:
+        outcome = "kept"
+    else:
+        outcome = verdict.reason.removeprefix("is_").replace("_", " ")  # is_login_wall -> login wall
+
+    if outcome == "kept":
+        line = f"{paint('keep', 'green')}  {name:<44}  {verdict.answers['kind']['choice']:<22}"
+    else:
+        line = f"{paint('skip', 'red')}  {name:<44}  {outcome:<22}"
+    acted = paint(f"  <- {', '.join(actions)}", "yellow") if actions else ""
+    print(f"{line}  {paint(f'{took:.2f}s', 'dim')}{acted}")
+    return outcome, actions, took
 
 
 async def main():
-    queue = asyncio.Queue()
-    for url in URLS:
-        queue.put_nowait(url)
-    results, jev_times = [], []
-
+    slots = asyncio.Semaphore(CRAWLERS)
     start = perf_counter()
     async with AsyncBrowser() as browser:
-        await asyncio.gather(*(crawl(browser, queue, results, jev_times) for _ in range(CRAWLERS)))
+        results = await asyncio.gather(*(triage(browser, slots, url) for url in URLS))
     elapsed = perf_counter() - start
 
-    outcomes = Counter(result for result, _, _ in results)
+    outcomes = Counter(outcome for outcome, _, _ in results)
     kept = outcomes.pop("kept", 0)
     acted = Counter(action for _, actions, _ in results for action in actions)
     page_time = sum(took for _, _, took in results)
-    jev_times.sort()
 
     print()
     print(
         f"{len(results)} pages in {elapsed:.1f}s with {CRAWLERS} crawlers "
         f"({page_time:.1f}s of page time): {kept} kept, {len(results) - kept} skipped"
     )
-    print(
-        f"Jev: {len(jev_times)} calls, median {statistics.median(jev_times):.2f}s, "
-        f"p90 {jev_times[int(len(jev_times) * 0.9)]:.2f}s"
-    )
+    if jev_times:
+        print(
+            f"Jev: {len(jev_times)} calls, median {statistics.median(jev_times):.2f}s, "
+            f"p90 {statistics.quantiles(jev_times, n=10)[-1]:.2f}s"
+        )
     print("skipped: " + ", ".join(f"{reason} {n}" for reason, n in outcomes.most_common()))
     if acted:
         print("acted:   " + ", ".join(f"{action} {n}" for action, n in acted.most_common()))
