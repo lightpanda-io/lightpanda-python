@@ -2,8 +2,9 @@
 
 One method per lightpanda browser tool, signatures derived from the tool
 JSON schemas, with tool and parameter names in snake_case (the schemas'
-camelCase names still work through ``Session.call``). ``AsyncSessionMethods``
-is the same surface with ``async def`` signatures.
+camelCase names still work through ``Session.call``). ``ElementMethods``
+holds the tools that take a ``backendNodeId``, aimed at the element itself.
+The ``Async`` classes are the same surfaces with ``async def`` signatures.
 """
 
 from __future__ import annotations
@@ -11,7 +12,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .browser import PageResult
+    from .async_browser import AsyncElement
+    from .browser import Element, PageResult
 
 
 class SessionMethods:
@@ -56,21 +58,25 @@ class SessionMethods:
         return self.call("evaluate", script=script, url=url, timeout=timeout, save=save)
     def extract(self, *, schema: str | dict | list, save: str | None = None) -> Any:
         """Extract structured data from the current page (navigate first). `schema` is a JSON object (passed as a string) mapping output field names to CSS-selector specs. It is NOT a JSON Schema — no "type"/"properties" wrappers; the keys ARE your output fields. Value shapes:
-          "<sel>"                                → first match's text (trimmed; null if no match)
-          ["<sel>"]                              → every match's text (string[])
-          {"selector":"<sel>","attr":"<name>"}   → first match's attribute value (href/src resolved to absolute URLs)
-          [{"selector":"<sel>","attr":"<name>"}] → every match's attribute (string[])
-          [{"selector":"<sel>","fields":{…}}]    → one object per match; field selectors resolve relative to that match and accept any shape above ("" = the match's own text; nest arrays for per-item sub-lists)
+        ```text
+        "<sel>"                                → first match's text (trimmed; null if no match)
+        ["<sel>"]                              → every match's text (string[])
+        {"selector":"<sel>","attr":"<name>"}   → first match's attribute value (href/src resolved to absolute URLs)
+        [{"selector":"<sel>","attr":"<name>"}] → every match's attribute (string[])
+        [{"selector":"<sel>","fields":{…}}]    → one object per match; field selectors resolve relative to that match and accept any shape above ("" = the match's own text; nest arrays for per-item sub-lists)
+        ```
         Add "limit": N inside any array's object spec to cap matches.
         Every extracted value is a string or null — parse numbers downstream. An empty array is a valid result, but if ALL top-level keys miss, the call errors: inspect the page (tree/markdown) and retry with corrected selectors.
         Finish data tasks with extract — it is the only read recorded as a replayable `extract(...)` script call; answers lifted from `markdown` text in chat are not.
 
         Examples (schema → result):
-          {"karma": "#karma"} → {"karma":"42"}
-          {"items": [".story .title"]} → {"items":["Title 1","Title 2"]}
-          {"top3": [{"selector":".story .title","limit":3}]} → {"top3":["A","B","C"]}
-          {"links": [{"selector":"a.title","attr":"href"}]} → {"links":["https://site/a","https://site/b"]}
-          {"stories": [{"selector":".athing","fields":{"title":".titleline","rank":".rank"}}]} → {"stories":[{"title":"Foo","rank":"1"}]}
+        ```text
+        {"karma": "#karma"} → {"karma":"42"}
+        {"items": [".story .title"]} → {"items":["Title 1","Title 2"]}
+        {"top3": [{"selector":".story .title","limit":3}]} → {"top3":["A","B","C"]}
+        {"links": [{"selector":"a.title","attr":"href"}]} → {"links":["https://site/a","https://site/b"]}
+        {"stories": [{"selector":".athing","fields":{"title":".titleline","rank":".rank"}}]} → {"stories":[{"title":"Foo","rank":"1"}]}
+        ```
 
         Args:
             schema: Extraction schema as a string: a JSON object literal mapping output field names to CSS-selector specs (see tool description). Not a JSON Schema.
@@ -93,7 +99,7 @@ class SessionMethods:
             - `title`: Document title. Empty or absent when the page has none.
         """
         return self.call("fill", value=value, selector=selector, backend_node_id=backend_node_id)
-    def find_element(self, *, role: str | None = None, name: str | None = None) -> Any:
+    def find_element(self, *, role: str | None = None, name: str | None = None) -> list[Element]:
         """Find interactive elements by role and/or accessible name. Returns matching elements with their backend node IDs. Useful for locating specific elements without parsing the full semantic tree.
 
         Args:
@@ -162,7 +168,7 @@ class SessionMethods:
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return self.call("html", selector=selector, backend_node_id=backend_node_id, max_bytes=max_bytes, strip=strip, url=url, timeout=timeout)
-    def interactive_elements(self, *, url: str | None = None, timeout: int | None = None) -> Any:
+    def interactive_elements(self, *, url: str | None = None, timeout: int | None = None) -> list[Element]:
         """List every visible interactive element on the page as a JSON array: native controls, ARIA widgets, contenteditable regions, elements with event listeners, and focusable elements. Each entry has `backendNodeId`, `tagName`, `role`, `name`, `type` (why it counts as interactive), `tabIndex`, and when present `listeners`, `disabled`, `id`, `class`, `href`, `inputType`, `value`, `elementName` and `placeholder`. Use it to survey what can be acted on; to locate one element by role or name, `findElement` is cheaper. If a url is provided, it navigates there first.
 
         Args:
@@ -292,7 +298,7 @@ class SessionMethods:
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return self.call("structuredData", url=url, timeout=timeout)
-    def tree(self, *, url: str | None = None, timeout: int | None = None, backend_node_id: int | None = None, max_depth: int | None = None) -> Any:
+    def tree(self, *, url: str | None = None, timeout: int | None = None, backend_node_id: int | None = None, max_depth: int | None = None, max_bytes: int | None = None) -> Any:
         """Semantic outline of the page as indented text: one node per line with its role, accessible name, value and backendNodeId, plus checked state and select options with the selected one marked. The default first read of an unfamiliar page; input and select values are already here, so no `nodeDetails` call is needed to read them. Pass `backendNodeId` to scope to a subtree and `maxDepth` to survey structure before going deeper. Read it again after any page-changing action, since the DOM it describes may have changed; use `nodeDetails` to turn a backendNodeId into a CSS selector for actions.
 
         Args:
@@ -300,8 +306,9 @@ class SessionMethods:
             timeout: Optional timeout in milliseconds. Defaults to 10000.
             backend_node_id: Optional backend node ID to get the tree for a specific element instead of the document root. 0 is treated as omitted.
             max_depth: Optional maximum depth of the tree to return. Useful for exploring high-level structure first.
+            max_bytes: Optional cap on output size in bytes. Past it, lines are kept by priority (alerts, dialogs, invalid fields and the focused element, then controls and named nodes, then text; list entries breadth-first), and dropped lines are counted in a '[+N more @id]' marker. id is the backendNodeId of the node holding them, often a list item or list that isn't printed itself: call tree with backendNodeId=id to read them.
         """
-        return self.call("tree", url=url, timeout=timeout, backend_node_id=backend_node_id, max_depth=max_depth)
+        return self.call("tree", url=url, timeout=timeout, backend_node_id=backend_node_id, max_depth=max_depth, max_bytes=max_bytes)
     def wait_for_script(self, *, script: str, timeout: int | None = None) -> Any:
         """Wait until a JS expression returns truthy. Re-evaluates on each tick of the event loop. Use for synchronization beyond what CSS selectors can express — e.g. `window.dataLoaded === true`, `document.readyState === 'complete'`, `document.querySelectorAll('.row').length >= 5`.
 
@@ -326,6 +333,140 @@ class SessionMethods:
             timeout: Optional timeout in milliseconds. Defaults to 5000.
         """
         return self.call("waitForState", state=state, timeout=timeout)
+
+class ElementMethods:
+    def call(self, tool: str, **kwargs: Any) -> Any:
+        raise NotImplementedError
+
+    def click(self) -> PageResult:
+        """Click on an interactive element. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Returns the current page URL and title after the click.
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
+        """
+        return self.call("click")
+    def fill(self, *, value: str) -> PageResult:
+        """Fill text into an input element. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId.
+
+        Args:
+            value: The text to fill into the input element.
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
+        """
+        return self.call("fill", value=value)
+    def hover(self) -> PageResult:
+        """Hover over an element, triggering mouseover and mouseenter events. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Useful for menus, tooltips, and hover states.
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
+        """
+        return self.call("hover")
+    def html(self, *, max_bytes: int | None = None, strip: dict | None = None) -> Any:
+        """Raw HTML for the document or, with `selector`/`backendNodeId`, a single node's outerHTML. Verbose; use only when you need attributes that markdown discards.
+
+        Args:
+            max_bytes: Optional soft cap on output size in bytes. Content is truncated at a UTF-8 boundary and a short '[truncated]' marker is appended past the cap.
+            strip: Optional. Omit element groups from the output: `js` (script, noscript, script preloads), `css` (style, stylesheet links), `ui` (css plus img, picture, video, audio, svg, canvas, iframe), `invisible` (elements an author rule or inline style sets to display:none), `shell` (nav, aside, dialog, page-level header/footer and the matching landmark roles; skipped when that would drop most of the text), `clutter` (keep only the main content, in the manner of reader modes; includes `shell` and `invisible`, and falls back to `shell` when it finds too little). {"js":true,"css":true} keeps a page dump small.
+        """
+        return self.call("html", max_bytes=max_bytes, strip=strip)
+    def markdown(self, *, max_bytes: int | None = None, strip: dict | None = None) -> Any:
+        """Render the page (or a subtree) as markdown. Scope with `selector` or `backendNodeId` to read just the relevant region — full-page markdown is the last resort. Use `maxBytes` to cap long pages.
+
+        Args:
+            max_bytes: Optional soft cap on output size in bytes. Content is truncated at a UTF-8 boundary and a short '[truncated]' marker is appended past the cap.
+            strip: Optional. Omit element groups from the output; same groups as the html tool's strip. `shell` (page chrome by markup) and `clutter` (keep only the main content, in the manner of reader modes) are the ones that matter for reading; `ui` also drops images.
+        """
+        return self.call("markdown", max_bytes=max_bytes, strip=strip)
+    def node_details(self) -> Any:
+        """Details for a node by backendNodeId: a ready-to-use CSS `selector` that resolves to the node (the first match, as click/fill resolve it), plus tag, role, name, interactivity, disabled, value, input type, placeholder, href, id, class, checked, select options. The canonical way to turn a tree backendNodeId into a CSS selector."""
+        return self.call("nodeDetails")
+    def press(self, *, key: str) -> PageResult:
+        """Press a keyboard key, dispatching keydown and keyup events. Use key names like 'Enter', 'Tab', 'Escape', 'ArrowDown', 'Backspace', or single characters like 'a', '1'. Common shorthand is normalized: 'enter'/'return' → 'Enter', 'esc' → 'Escape', 'up'/'down'/'left'/'right' → 'Arrow*', 'space' → ' '. Pressing 'Enter' on a form input or submit button triggers implicit form submission.
+
+        Args:
+            key: The key to press (e.g. 'Enter', 'Tab', 'a').
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
+        """
+        return self.call("press", key=key)
+    def screenshot(self, *, path: str | None = None, full_page: bool | None = None, strip: dict | None = None) -> Any:
+        """Render the page, or one node, as a PNG: the text layout Lightpanda computes, not a pixel-accurate browser rendering (no images, fonts or CSS colours). With `path`, writes the file at full size and returns its location; without it, returns the image inline where the client can display one, at most 1280px wide and 4096px tall. Use it to see spatial layout; read content with `markdown`/`tree`.
+
+        Args:
+            path: Optional relative path (no '..' segments) to write the PNG to. Created or overwritten. Without it the image is returned inline, which needs a client that can display images.
+            full_page: Render the whole content height instead of one viewport. Defaults to false.
+            strip: Optional. Omit element groups from the render; same groups as the html tool's strip (`js`, `css`, `ui`, `invisible`, `shell`, `clutter`).
+        """
+        return self.call("screenshot", path=path, full_page=full_page, strip=strip)
+    def scroll(self, *, x: int | None = None, y: int | None = None) -> PageResult:
+        """Scroll the window, or an element's scroll container, to an absolute position; an omitted axis keeps its current offset. Target an element with a CSS selector (preferred for reproducibility) or a backendNodeId; omit both to scroll the window. Page scripts receive a `scroll` event, so content that loads on scroll (infinite feeds, lazy lists) may appear: read the page again afterwards, with `waitForState` if it is still loading. Returns the final scroll position and the current page URL and title.
+
+        Args:
+            x: Optional: The horizontal scroll offset.
+            y: Optional: The vertical scroll offset.
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
+        """
+        return self.call("scroll", x=x, y=y)
+    def select_option(self, *, value: str) -> PageResult:
+        """Select an option in a <select> dropdown element by its value. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Dispatches input and change events.
+
+        Args:
+            value: The value of the option to select.
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
+        """
+        return self.call("selectOption", value=value)
+    def set_checked(self, *, checked: bool) -> PageResult:
+        """Check or uncheck a checkbox or radio button. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Dispatches input, change, and click events.
+
+        Args:
+            checked: Whether to check (true) or uncheck (false) the element.
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
+        """
+        return self.call("setChecked", checked=checked)
+    def tree(self, *, max_depth: int | None = None, max_bytes: int | None = None) -> Any:
+        """Semantic outline of the page as indented text: one node per line with its role, accessible name, value and backendNodeId, plus checked state and select options with the selected one marked. The default first read of an unfamiliar page; input and select values are already here, so no `nodeDetails` call is needed to read them. Pass `backendNodeId` to scope to a subtree and `maxDepth` to survey structure before going deeper. Read it again after any page-changing action, since the DOM it describes may have changed; use `nodeDetails` to turn a backendNodeId into a CSS selector for actions.
+
+        Args:
+            max_depth: Optional maximum depth of the tree to return. Useful for exploring high-level structure first.
+            max_bytes: Optional cap on output size in bytes. Past it, lines are kept by priority (alerts, dialogs, invalid fields and the focused element, then controls and named nodes, then text; list entries breadth-first), and dropped lines are counted in a '[+N more @id]' marker. id is the backendNodeId of the node holding them, often a list item or list that isn't printed itself: call tree with backendNodeId=id to read them.
+        """
+        return self.call("tree", max_depth=max_depth, max_bytes=max_bytes)
 
 class AsyncSessionMethods:
     async def call(self, tool: str, **kwargs: Any) -> Any:
@@ -369,21 +510,25 @@ class AsyncSessionMethods:
         return await self.call("evaluate", script=script, url=url, timeout=timeout, save=save)
     async def extract(self, *, schema: str | dict | list, save: str | None = None) -> Any:
         """Extract structured data from the current page (navigate first). `schema` is a JSON object (passed as a string) mapping output field names to CSS-selector specs. It is NOT a JSON Schema — no "type"/"properties" wrappers; the keys ARE your output fields. Value shapes:
-          "<sel>"                                → first match's text (trimmed; null if no match)
-          ["<sel>"]                              → every match's text (string[])
-          {"selector":"<sel>","attr":"<name>"}   → first match's attribute value (href/src resolved to absolute URLs)
-          [{"selector":"<sel>","attr":"<name>"}] → every match's attribute (string[])
-          [{"selector":"<sel>","fields":{…}}]    → one object per match; field selectors resolve relative to that match and accept any shape above ("" = the match's own text; nest arrays for per-item sub-lists)
+        ```text
+        "<sel>"                                → first match's text (trimmed; null if no match)
+        ["<sel>"]                              → every match's text (string[])
+        {"selector":"<sel>","attr":"<name>"}   → first match's attribute value (href/src resolved to absolute URLs)
+        [{"selector":"<sel>","attr":"<name>"}] → every match's attribute (string[])
+        [{"selector":"<sel>","fields":{…}}]    → one object per match; field selectors resolve relative to that match and accept any shape above ("" = the match's own text; nest arrays for per-item sub-lists)
+        ```
         Add "limit": N inside any array's object spec to cap matches.
         Every extracted value is a string or null — parse numbers downstream. An empty array is a valid result, but if ALL top-level keys miss, the call errors: inspect the page (tree/markdown) and retry with corrected selectors.
         Finish data tasks with extract — it is the only read recorded as a replayable `extract(...)` script call; answers lifted from `markdown` text in chat are not.
 
         Examples (schema → result):
-          {"karma": "#karma"} → {"karma":"42"}
-          {"items": [".story .title"]} → {"items":["Title 1","Title 2"]}
-          {"top3": [{"selector":".story .title","limit":3}]} → {"top3":["A","B","C"]}
-          {"links": [{"selector":"a.title","attr":"href"}]} → {"links":["https://site/a","https://site/b"]}
-          {"stories": [{"selector":".athing","fields":{"title":".titleline","rank":".rank"}}]} → {"stories":[{"title":"Foo","rank":"1"}]}
+        ```text
+        {"karma": "#karma"} → {"karma":"42"}
+        {"items": [".story .title"]} → {"items":["Title 1","Title 2"]}
+        {"top3": [{"selector":".story .title","limit":3}]} → {"top3":["A","B","C"]}
+        {"links": [{"selector":"a.title","attr":"href"}]} → {"links":["https://site/a","https://site/b"]}
+        {"stories": [{"selector":".athing","fields":{"title":".titleline","rank":".rank"}}]} → {"stories":[{"title":"Foo","rank":"1"}]}
+        ```
 
         Args:
             schema: Extraction schema as a string: a JSON object literal mapping output field names to CSS-selector specs (see tool description). Not a JSON Schema.
@@ -406,7 +551,7 @@ class AsyncSessionMethods:
             - `title`: Document title. Empty or absent when the page has none.
         """
         return await self.call("fill", value=value, selector=selector, backend_node_id=backend_node_id)
-    async def find_element(self, *, role: str | None = None, name: str | None = None) -> Any:
+    async def find_element(self, *, role: str | None = None, name: str | None = None) -> list[AsyncElement]:
         """Find interactive elements by role and/or accessible name. Returns matching elements with their backend node IDs. Useful for locating specific elements without parsing the full semantic tree.
 
         Args:
@@ -475,7 +620,7 @@ class AsyncSessionMethods:
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return await self.call("html", selector=selector, backend_node_id=backend_node_id, max_bytes=max_bytes, strip=strip, url=url, timeout=timeout)
-    async def interactive_elements(self, *, url: str | None = None, timeout: int | None = None) -> Any:
+    async def interactive_elements(self, *, url: str | None = None, timeout: int | None = None) -> list[AsyncElement]:
         """List every visible interactive element on the page as a JSON array: native controls, ARIA widgets, contenteditable regions, elements with event listeners, and focusable elements. Each entry has `backendNodeId`, `tagName`, `role`, `name`, `type` (why it counts as interactive), `tabIndex`, and when present `listeners`, `disabled`, `id`, `class`, `href`, `inputType`, `value`, `elementName` and `placeholder`. Use it to survey what can be acted on; to locate one element by role or name, `findElement` is cheaper. If a url is provided, it navigates there first.
 
         Args:
@@ -605,7 +750,7 @@ class AsyncSessionMethods:
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return await self.call("structuredData", url=url, timeout=timeout)
-    async def tree(self, *, url: str | None = None, timeout: int | None = None, backend_node_id: int | None = None, max_depth: int | None = None) -> Any:
+    async def tree(self, *, url: str | None = None, timeout: int | None = None, backend_node_id: int | None = None, max_depth: int | None = None, max_bytes: int | None = None) -> Any:
         """Semantic outline of the page as indented text: one node per line with its role, accessible name, value and backendNodeId, plus checked state and select options with the selected one marked. The default first read of an unfamiliar page; input and select values are already here, so no `nodeDetails` call is needed to read them. Pass `backendNodeId` to scope to a subtree and `maxDepth` to survey structure before going deeper. Read it again after any page-changing action, since the DOM it describes may have changed; use `nodeDetails` to turn a backendNodeId into a CSS selector for actions.
 
         Args:
@@ -613,8 +758,9 @@ class AsyncSessionMethods:
             timeout: Optional timeout in milliseconds. Defaults to 10000.
             backend_node_id: Optional backend node ID to get the tree for a specific element instead of the document root. 0 is treated as omitted.
             max_depth: Optional maximum depth of the tree to return. Useful for exploring high-level structure first.
+            max_bytes: Optional cap on output size in bytes. Past it, lines are kept by priority (alerts, dialogs, invalid fields and the focused element, then controls and named nodes, then text; list entries breadth-first), and dropped lines are counted in a '[+N more @id]' marker. id is the backendNodeId of the node holding them, often a list item or list that isn't printed itself: call tree with backendNodeId=id to read them.
         """
-        return await self.call("tree", url=url, timeout=timeout, backend_node_id=backend_node_id, max_depth=max_depth)
+        return await self.call("tree", url=url, timeout=timeout, backend_node_id=backend_node_id, max_depth=max_depth, max_bytes=max_bytes)
     async def wait_for_script(self, *, script: str, timeout: int | None = None) -> Any:
         """Wait until a JS expression returns truthy. Re-evaluates on each tick of the event loop. Use for synchronization beyond what CSS selectors can express — e.g. `window.dataLoaded === true`, `document.readyState === 'complete'`, `document.querySelectorAll('.row').length >= 5`.
 
@@ -639,3 +785,137 @@ class AsyncSessionMethods:
             timeout: Optional timeout in milliseconds. Defaults to 5000.
         """
         return await self.call("waitForState", state=state, timeout=timeout)
+
+class AsyncElementMethods:
+    async def call(self, tool: str, **kwargs: Any) -> Any:
+        raise NotImplementedError
+
+    async def click(self) -> PageResult:
+        """Click on an interactive element. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Returns the current page URL and title after the click.
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
+        """
+        return await self.call("click")
+    async def fill(self, *, value: str) -> PageResult:
+        """Fill text into an input element. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId.
+
+        Args:
+            value: The text to fill into the input element.
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
+        """
+        return await self.call("fill", value=value)
+    async def hover(self) -> PageResult:
+        """Hover over an element, triggering mouseover and mouseenter events. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Useful for menus, tooltips, and hover states.
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
+        """
+        return await self.call("hover")
+    async def html(self, *, max_bytes: int | None = None, strip: dict | None = None) -> Any:
+        """Raw HTML for the document or, with `selector`/`backendNodeId`, a single node's outerHTML. Verbose; use only when you need attributes that markdown discards.
+
+        Args:
+            max_bytes: Optional soft cap on output size in bytes. Content is truncated at a UTF-8 boundary and a short '[truncated]' marker is appended past the cap.
+            strip: Optional. Omit element groups from the output: `js` (script, noscript, script preloads), `css` (style, stylesheet links), `ui` (css plus img, picture, video, audio, svg, canvas, iframe), `invisible` (elements an author rule or inline style sets to display:none), `shell` (nav, aside, dialog, page-level header/footer and the matching landmark roles; skipped when that would drop most of the text), `clutter` (keep only the main content, in the manner of reader modes; includes `shell` and `invisible`, and falls back to `shell` when it finds too little). {"js":true,"css":true} keeps a page dump small.
+        """
+        return await self.call("html", max_bytes=max_bytes, strip=strip)
+    async def markdown(self, *, max_bytes: int | None = None, strip: dict | None = None) -> Any:
+        """Render the page (or a subtree) as markdown. Scope with `selector` or `backendNodeId` to read just the relevant region — full-page markdown is the last resort. Use `maxBytes` to cap long pages.
+
+        Args:
+            max_bytes: Optional soft cap on output size in bytes. Content is truncated at a UTF-8 boundary and a short '[truncated]' marker is appended past the cap.
+            strip: Optional. Omit element groups from the output; same groups as the html tool's strip. `shell` (page chrome by markup) and `clutter` (keep only the main content, in the manner of reader modes) are the ones that matter for reading; `ui` also drops images.
+        """
+        return await self.call("markdown", max_bytes=max_bytes, strip=strip)
+    async def node_details(self) -> Any:
+        """Details for a node by backendNodeId: a ready-to-use CSS `selector` that resolves to the node (the first match, as click/fill resolve it), plus tag, role, name, interactivity, disabled, value, input type, placeholder, href, id, class, checked, select options. The canonical way to turn a tree backendNodeId into a CSS selector."""
+        return await self.call("nodeDetails")
+    async def press(self, *, key: str) -> PageResult:
+        """Press a keyboard key, dispatching keydown and keyup events. Use key names like 'Enter', 'Tab', 'Escape', 'ArrowDown', 'Backspace', or single characters like 'a', '1'. Common shorthand is normalized: 'enter'/'return' → 'Enter', 'esc' → 'Escape', 'up'/'down'/'left'/'right' → 'Arrow*', 'space' → ' '. Pressing 'Enter' on a form input or submit button triggers implicit form submission.
+
+        Args:
+            key: The key to press (e.g. 'Enter', 'Tab', 'a').
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
+        """
+        return await self.call("press", key=key)
+    async def screenshot(self, *, path: str | None = None, full_page: bool | None = None, strip: dict | None = None) -> Any:
+        """Render the page, or one node, as a PNG: the text layout Lightpanda computes, not a pixel-accurate browser rendering (no images, fonts or CSS colours). With `path`, writes the file at full size and returns its location; without it, returns the image inline where the client can display one, at most 1280px wide and 4096px tall. Use it to see spatial layout; read content with `markdown`/`tree`.
+
+        Args:
+            path: Optional relative path (no '..' segments) to write the PNG to. Created or overwritten. Without it the image is returned inline, which needs a client that can display images.
+            full_page: Render the whole content height instead of one viewport. Defaults to false.
+            strip: Optional. Omit element groups from the render; same groups as the html tool's strip (`js`, `css`, `ui`, `invisible`, `shell`, `clutter`).
+        """
+        return await self.call("screenshot", path=path, full_page=full_page, strip=strip)
+    async def scroll(self, *, x: int | None = None, y: int | None = None) -> PageResult:
+        """Scroll the window, or an element's scroll container, to an absolute position; an omitted axis keeps its current offset. Target an element with a CSS selector (preferred for reproducibility) or a backendNodeId; omit both to scroll the window. Page scripts receive a `scroll` event, so content that loads on scroll (infinite feeds, lazy lists) may appear: read the page again afterwards, with `waitForState` if it is still loading. Returns the final scroll position and the current page URL and title.
+
+        Args:
+            x: Optional: The horizontal scroll offset.
+            y: Optional: The vertical scroll offset.
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
+        """
+        return await self.call("scroll", x=x, y=y)
+    async def select_option(self, *, value: str) -> PageResult:
+        """Select an option in a <select> dropdown element by its value. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Dispatches input and change events.
+
+        Args:
+            value: The value of the option to select.
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
+        """
+        return await self.call("selectOption", value=value)
+    async def set_checked(self, *, checked: bool) -> PageResult:
+        """Check or uncheck a checkbox or radio button. Provide either a CSS selector (preferred for reproducibility) or a backendNodeId. Dispatches input, change, and click events.
+
+        Args:
+            checked: Whether to check (true) or uncheck (false) the element.
+
+        Returns:
+            PageResult: The sentence above, with these attributes (None when absent):
+
+            - `url`: URL of the page the call left loaded.
+            - `http_status`: Response status of that page's own document. Absent when no response has arrived. 4xx/5xx means an error page, not the content.
+            - `title`: Document title. Empty or absent when the page has none.
+        """
+        return await self.call("setChecked", checked=checked)
+    async def tree(self, *, max_depth: int | None = None, max_bytes: int | None = None) -> Any:
+        """Semantic outline of the page as indented text: one node per line with its role, accessible name, value and backendNodeId, plus checked state and select options with the selected one marked. The default first read of an unfamiliar page; input and select values are already here, so no `nodeDetails` call is needed to read them. Pass `backendNodeId` to scope to a subtree and `maxDepth` to survey structure before going deeper. Read it again after any page-changing action, since the DOM it describes may have changed; use `nodeDetails` to turn a backendNodeId into a CSS selector for actions.
+
+        Args:
+            max_depth: Optional maximum depth of the tree to return. Useful for exploring high-level structure first.
+            max_bytes: Optional cap on output size in bytes. Past it, lines are kept by priority (alerts, dialogs, invalid fields and the focused element, then controls and named nodes, then text; list entries breadth-first), and dropped lines are counted in a '[+N more @id]' marker. id is the backendNodeId of the node holding them, often a list item or list that isn't printed itself: call tree with backendNodeId=id to read them.
+        """
+        return await self.call("tree", max_depth=max_depth, max_bytes=max_bytes)

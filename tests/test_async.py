@@ -6,7 +6,13 @@ import asyncio
 
 import pytest
 
-from lightpanda import AsyncBrowser, LightpandaError, ToolError, run_script_async
+from lightpanda import (
+    AsyncBrowser,
+    AsyncElement,
+    LightpandaError,
+    ToolError,
+    run_script_async,
+)
 
 
 async def test_goto_markdown_and_snake_case(abrowser, fixture_url):
@@ -26,6 +32,15 @@ async def test_concurrent_sessions_are_isolated(abrowser, fixture_url):
 
     urls = await asyncio.gather(*(visit(p) for p in ("index.html", "other.html", "index.html")))
     assert [u.rsplit("/", 1)[1] for u in urls] == ["index.html", "other.html", "index.html"]
+
+
+async def test_found_elements_act_on_themselves(abrowser, fixture_url):
+    async with abrowser.session() as page:
+        await page.goto(url=f"{fixture_url}/index.html")
+        found = await page.find_element(role="link", name="Second")
+        assert [type(el) for el in found] == [AsyncElement]
+        assert found[0]["name"] == "Second item"
+        assert (await found[0].click()).url == f"{fixture_url}/other.html"
 
 
 async def test_tool_error_raises(abrowser, fixture_url):
