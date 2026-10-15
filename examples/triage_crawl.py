@@ -41,7 +41,8 @@ URLS = [
     "https://news.ycombinator.com/",
     "https://news.ycombinator.com/newest",
     # a cookie wall in front of the content
-    "https://www.indeed.com/",
+    "https://www.elmundo.es/",
+    "https://www.20minutes.fr/",
     # walls
     "https://news.ycombinator.com/login",
     "https://github.com/settings/profile",
