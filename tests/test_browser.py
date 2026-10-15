@@ -1,3 +1,4 @@
+import json
 import os
 import signal
 import subprocess
@@ -8,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from conftest import alive
-from lightpanda import Browser, LightpandaError, PageResult, ScriptError, ToolError, run_script, client
+from lightpanda import Browser, Element, LightpandaError, PageResult, ScriptError, ToolError, run_script, client
 
 
 def test_goto_and_markdown(browser, fixture_url):
@@ -43,6 +44,24 @@ def test_page_result_carries_status(browser, fixture_url):
         assert clicked.startswith("Clicked element")
         assert clicked.url == f"{fixture_url}/other.html"
         assert clicked.http_status == 200
+
+
+def test_found_elements_act_on_themselves(browser, fixture_url):
+    with browser.new_session() as page:
+        page.goto(url=f"{fixture_url}/index.html")
+        found = page.find_element(role="link", name="Second")
+        assert [type(el) for el in found] == [Element]
+        link = found[0]
+        # Still the dict the browser sent.
+        assert link["name"] == "Second item"
+        assert json.loads(json.dumps(link)) == dict(link)
+        assert link.backend_node_id == link["backendNodeId"]
+
+        assert link.markdown().strip() == f"[Second item]({fixture_url}/other.html)"
+        assert link.click().url == f"{fixture_url}/other.html"
+
+        page.goto(url=f"{fixture_url}/index.html")
+        assert all(isinstance(el, Element) for el in page.interactive_elements())
 
 
 def test_extract_dict_schema(browser, fixture_url):

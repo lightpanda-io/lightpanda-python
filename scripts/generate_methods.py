@@ -8,7 +8,9 @@ descriptions, so IDEs and pdoc show what every argument means. Tools that
 declare an ``outputSchema`` answer with ``structuredContent``, which
 ``Session.call`` returns as a ``PageResult``, so those methods are annotated
 with it and get a ``Returns:`` section listing its attributes from the
-schema's property descriptions; the rest stay ``Any``. Being real code, the methods are
+schema's property descriptions; the rest stay ``Any``. Tools that take a
+``backendNodeId`` also get a method on ``ElementMethods``, aimed at the element
+it is called on. Being real code, the methods are
 visible to IDEs, type checkers, and pdoc alike. Run with a binary available:
 
     uv run --no-project python scripts/generate_methods.py
@@ -25,7 +27,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from lightpanda import Browser  # noqa: E402
-from lightpanda.browser import _SESSION_TOOLS, PageResult, _snake  # noqa: E402
+from lightpanda.browser import (  # noqa: E402
+    _ELEMENT_PARAMS,
+    _ELEMENT_TOOLS,
+    _SESSION_TOOLS,
+    PageResult,
+    _snake,
+)
 
 PY_TYPES = {"string": "str", "integer": "int", "number": "float", "boolean": "bool", "object": "dict", "array": "list"}
 
@@ -34,8 +42,9 @@ HEADER = '''\
 
 One method per lightpanda browser tool, signatures derived from the tool
 JSON schemas, with tool and parameter names in snake_case (the schemas'
-camelCase names still work through ``Session.call``). ``AsyncSessionMethods``
-is the same surface with ``async def`` signatures.
+camelCase names still work through ``Session.call``). ``ElementMethods``
+holds the tools that take a ``backendNodeId``, aimed at the element itself.
+The ``Async`` classes are the same surfaces with ``async def`` signatures.
 """
 
 from __future__ import annotations
@@ -43,7 +52,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .browser import PageResult
+    from .async_browser import AsyncElement
+    from .browser import Element, PageResult
 '''
 
 CLASS_HEADER = '''\
@@ -85,9 +95,11 @@ def docstring(description: str, args: list[tuple[str, str]], returns: str = "") 
     return f'        """{indented.lstrip()}\n        """'
 
 
-def method_source(name: str, spec: dict, is_async: bool = False) -> str:
+def method_source(name: str, spec: dict, is_async: bool = False, on_element: bool = False) -> str:
     schema = spec["schema"]
     properties = schema.get("properties", {})
+    if on_element:
+        properties = {prop: v for prop, v in properties.items() if prop not in _ELEMENT_PARAMS}
     required = set(schema.get("required", []))
     args = {prop: _snake(prop) for prop in properties}
     for prop, arg in args.items():
@@ -119,6 +131,8 @@ def method_source(name: str, spec: dict, is_async: bool = False) -> str:
     await_ = "await " if is_async else ""
     output_schema = spec.get("output_schema")
     returns = "PageResult" if output_schema else "Any"
+    if name in _ELEMENT_TOOLS:
+        returns = "list[AsyncElement]" if is_async else "list[Element]"
     lines = [f"    {prefix} {snake}({', '.join(params)}) -> {returns}:"]
     section = returns_section(name, output_schema) if output_schema else ""
     lines.append(docstring(spec["description"], documented, section))
@@ -131,16 +145,22 @@ def main() -> None:
     with Browser() as browser:
         tools = {k: v for k, v in browser.tools.items() if k not in _SESSION_TOOLS}
 
+    on_node = sorted(name for name in tools if "backendNodeId" in tools[name]["schema"].get("properties", {}))
+    # Elements are dicts: a tool must not shadow one of dict's methods.
+    if shadowed := [name for name in on_node if hasattr(dict, _snake(name))]:
+        raise SystemExit(f"tools {shadowed} would shadow dict methods on Element")
     blocks = [HEADER]
     for is_async in (False, True):
-        cls = "AsyncSessionMethods" if is_async else "SessionMethods"
-        blocks.append(CLASS_HEADER.format(cls=cls, prefix="async " if is_async else ""))
+        prefix = "Async" if is_async else ""
+        blocks.append(CLASS_HEADER.format(cls=f"{prefix}SessionMethods", prefix="async " if is_async else ""))
         blocks += [method_source(name, tools[name], is_async) for name in sorted(tools)]
+        blocks.append(CLASS_HEADER.format(cls=f"{prefix}ElementMethods", prefix="async " if is_async else ""))
+        blocks += [method_source(name, tools[name], is_async, on_element=True) for name in on_node]
 
     source = "\n".join(blocks) + "\n"
     compile(source, str(out), "exec")
     out.write_text(source)
-    print(f"wrote {out} ({len(tools)} tools)")
+    print(f"wrote {out} ({len(tools)} tools, {len(on_node)} on elements)")
 
 
 if __name__ == "__main__":

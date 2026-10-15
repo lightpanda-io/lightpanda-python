@@ -17,11 +17,12 @@ import os
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 
-from .browser import Browser, Session, _generated, run_script
+from .browser import Browser, Element, Session, _generated, run_script
 from .client import _documented
 from .errors import LightpandaError
 
 AsyncSessionMethods = _generated("AsyncSessionMethods")
+AsyncElementMethods = _generated("AsyncElementMethods")
 
 
 async def _run(executor: ThreadPoolExecutor, fn, *args, **kwargs):
@@ -52,7 +53,10 @@ class AsyncSession(AsyncSessionMethods):
     async def call(self, tool: str, **kwargs):
         """Invoke a browser tool by name. The generated methods route here.
         Same contract as :meth:`Session.call`, awaitable."""
-        return await _run(self._executor, self._session.call, tool, **kwargs)
+        result = await _run(self._executor, self._session.call, tool, **kwargs)
+        if isinstance(result, list):
+            return [AsyncElement(node, self) if isinstance(node, Element) else node for node in result]
+        return result
 
     def __getattr__(self, attr: str):
         session = self.__dict__.get("_session")
@@ -70,6 +74,34 @@ class AsyncSession(AsyncSessionMethods):
     async def __aexit__(self, *exc):
         await self.close()
 
+
+
+@_documented
+class AsyncElement(AsyncElementMethods, dict):
+    """A node :meth:`AsyncSession.find_element` or
+    :meth:`AsyncSession.interactive_elements` found, which acts on itself.
+
+    Same as :class:`Element`, with every method a coroutine to await:
+
+    ```python
+    found = await page.find_element(role="button", name="Accept")
+    if found:
+        await found[0].click()
+    ```
+    """
+
+    def __init__(self, fields: dict, session: AsyncSession):
+        super().__init__(fields)
+        self._session = session
+
+    @property
+    def backend_node_id(self) -> int:
+        """The node's id, as :meth:`AsyncSession.click` and the others take it."""
+        return self["backendNodeId"]
+
+    async def call(self, tool: str, **kwargs):
+        """Invoke a browser tool on this node; see :meth:`AsyncSession.call`."""
+        return await self._session.call(tool, backendNodeId=self.backend_node_id, **kwargs)
 
 
 class AsyncBrowser:

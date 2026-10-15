@@ -173,6 +173,16 @@ if r.http_status >= 400:
     raise SystemExit(f"{r.url} is an error page, not content")
 ```
 
+`find_element` and `interactive_elements` return elements that act on
+themselves: each is still the dict the browser sent, and every action that
+takes a `backend_node_id` is also a method on it:
+
+```python
+found = page.find_element(role="button", name="Accept")
+if found:
+    found[0].click()        # also fill(value=...), hover(), markdown(), ...
+```
+
 ## Examples
 
 [`examples/`](examples/) scrapes a JavaScript-rendered site that `requests`

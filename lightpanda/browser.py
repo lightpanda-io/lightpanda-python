@@ -73,6 +73,45 @@ def _generated(name: str) -> type:
 
 
 SessionMethods = _generated("SessionMethods")
+ElementMethods = _generated("ElementMethods")
+
+# Tools answering with a list of nodes, which `Session.call` returns as Elements.
+_ELEMENT_TOOLS = {"findElement", "interactiveElements"}
+# Element methods aim at the element itself: no other target, no navigation.
+_ELEMENT_PARAMS = {"selector", "backendNodeId", "url", "timeout"}
+
+
+@_documented
+class Element(ElementMethods, dict):
+    """A node :meth:`Session.find_element` or :meth:`Session.interactive_elements`
+    found, which acts on itself.
+
+    Still the dict the browser sent, so ``element["name"]`` reads its fields,
+    with every action that takes a ``backend_node_id`` as a method aimed at
+    this node:
+
+    ```python
+    found = page.find_element(role="button", name="Accept")
+    if found:
+        found[0].click()
+    ```
+
+    The element belongs to its page: once the page navigates away, its node
+    is gone and the methods fail.
+    """
+
+    def __init__(self, fields: dict, session: Session):
+        super().__init__(fields)
+        self._session = session
+
+    @property
+    def backend_node_id(self) -> int:
+        """The node's id, as :meth:`Session.click` and the others take it."""
+        return self["backendNodeId"]
+
+    def call(self, tool: str, **kwargs):
+        """Invoke a browser tool on this node; see :meth:`Session.call`."""
+        return self._session.call(tool, backendNodeId=self.backend_node_id, **kwargs)
 
 
 @_documented
@@ -167,9 +206,12 @@ class Session(SessionMethods):
         if page_state is not None:
             return PageResult(text, page_state)
         try:
-            return json.loads(text)
+            parsed = json.loads(text)
         except ValueError:
             return text
+        if name in _ELEMENT_TOOLS and isinstance(parsed, list):
+            return [Element(node, self) for node in parsed]
+        return parsed
 
     def _resolve(self, attr: str) -> str | None:
         """The tool name behind a snake_case public attribute, if any."""
