@@ -94,16 +94,40 @@ def rate_limited(verdict):
     return verdict.answers["rate_limited"] >= 0.5
 
 
+def describe(verdict):
+    """The page's kind when it is worth reading, else why not."""
+    if rate_limited(verdict):
+        return "rate limited"
+    if verdict.ok:
+        return verdict.answers["kind"]["choice"]
+    return verdict.reason.removeprefix("is_").replace("_", " ")  # is_login_wall -> login wall
+
+
 async def visit(page, url):
-    """Load `url`, judge it, act on the verdict. Returns (verdict, actions)."""
+    """Load `url` and act on what Jev sees, printing a line per verdict.
+    Returns the last verdict and the actions taken."""
+    name = url.split("://", 1)[1][:44]
+    start = perf_counter()
     actions = []
+
+    def show(verdict, action=None, detail=""):
+        if action:
+            actions.append(action)
+            status, note = paint("retry", "yellow"), paint(f"  -> {action}{detail}", "yellow")
+        elif verdict.ok and not rate_limited(verdict):
+            status, note = paint("keep ", "green"), ""
+        else:
+            status, note = paint("skip ", "red"), ""
+        took = paint(f"{perf_counter() - start:.2f}s", "dim")
+        print(f"{status}  {name:<44}  {describe(verdict):<22}  {took}{note}")
+
     await page.goto(url=url)
     verdict = await judge(page)
 
     for attempt in (1, 2):
         if not rate_limited(verdict):
             break
-        actions.append("backed off")
+        show(verdict, "back off", f" {3 * attempt}s")
         await asyncio.sleep(3 * attempt)
         await page.goto(url=url)
         verdict = await judge(page)
@@ -111,45 +135,32 @@ async def visit(page, url):
     if verdict.is_consent_wall:
         found = await page.find_element(role="button", name=ACCEPT)
         if found:
-            actions.append("accepted cookies")
-            await page.click(backend_node_id=found[0]["backendNodeId"])
+            show(verdict, "accept cookies")
+            await found[0].click()
             await page.wait_for_state(state="networkidle")  # banners fade out
             verdict = await judge(page)
 
     if verdict.is_loading:
-        actions.append("waited")
+        show(verdict, "wait")
         await page.wait_for_state(state="networkidle")
         verdict = await judge(page)
 
+    show(verdict)
     return verdict, actions
 
 
 async def triage(browser, slots, url):
-    """Visit `url` once a slot is free, print a line, return (outcome, actions, seconds)."""
-    name = url.split("://", 1)[1][:44]
+    """Visit `url` once a slot is free. Returns (outcome, actions, seconds)."""
     async with slots:
         start = perf_counter()
         try:
             async with await browser.new_session() as page:
                 verdict, actions = await visit(page, url)
         except LightpandaError as err:
-            print(f"{paint('fail', 'red')}  {name:<44}  {err}")
+            print(f"{paint('fail ', 'red')}  {url.split('://', 1)[1][:44]:<44}  {err}")
             return "failed", [], perf_counter() - start
         took = perf_counter() - start
-
-    if rate_limited(verdict):
-        outcome = "rate limited"
-    elif verdict.ok:
-        outcome = "kept"
-    else:
-        outcome = verdict.reason.removeprefix("is_").replace("_", " ")  # is_login_wall -> login wall
-
-    if outcome == "kept":
-        line = f"{paint('keep', 'green')}  {name:<44}  {verdict.answers['kind']['choice']:<22}"
-    else:
-        line = f"{paint('skip', 'red')}  {name:<44}  {outcome:<22}"
-    acted = paint(f"  <- {', '.join(actions)}", "yellow") if actions else ""
-    print(f"{line}  {paint(f'{took:.2f}s', 'dim')}{acted}")
+    outcome = "kept" if verdict.ok and not rate_limited(verdict) else describe(verdict)
     return outcome, actions, took
 
 
