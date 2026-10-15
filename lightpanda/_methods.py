@@ -56,21 +56,25 @@ class SessionMethods:
         return self.call("evaluate", script=script, url=url, timeout=timeout, save=save)
     def extract(self, *, schema: str | dict | list, save: str | None = None) -> Any:
         """Extract structured data from the current page (navigate first). `schema` is a JSON object (passed as a string) mapping output field names to CSS-selector specs. It is NOT a JSON Schema — no "type"/"properties" wrappers; the keys ARE your output fields. Value shapes:
-          "<sel>"                                → first match's text (trimmed; null if no match)
-          ["<sel>"]                              → every match's text (string[])
-          {"selector":"<sel>","attr":"<name>"}   → first match's attribute value (href/src resolved to absolute URLs)
-          [{"selector":"<sel>","attr":"<name>"}] → every match's attribute (string[])
-          [{"selector":"<sel>","fields":{…}}]    → one object per match; field selectors resolve relative to that match and accept any shape above ("" = the match's own text; nest arrays for per-item sub-lists)
+        ```text
+        "<sel>"                                → first match's text (trimmed; null if no match)
+        ["<sel>"]                              → every match's text (string[])
+        {"selector":"<sel>","attr":"<name>"}   → first match's attribute value (href/src resolved to absolute URLs)
+        [{"selector":"<sel>","attr":"<name>"}] → every match's attribute (string[])
+        [{"selector":"<sel>","fields":{…}}]    → one object per match; field selectors resolve relative to that match and accept any shape above ("" = the match's own text; nest arrays for per-item sub-lists)
+        ```
         Add "limit": N inside any array's object spec to cap matches.
         Every extracted value is a string or null — parse numbers downstream. An empty array is a valid result, but if ALL top-level keys miss, the call errors: inspect the page (tree/markdown) and retry with corrected selectors.
         Finish data tasks with extract — it is the only read recorded as a replayable `extract(...)` script call; answers lifted from `markdown` text in chat are not.
 
         Examples (schema → result):
-          {"karma": "#karma"} → {"karma":"42"}
-          {"items": [".story .title"]} → {"items":["Title 1","Title 2"]}
-          {"top3": [{"selector":".story .title","limit":3}]} → {"top3":["A","B","C"]}
-          {"links": [{"selector":"a.title","attr":"href"}]} → {"links":["https://site/a","https://site/b"]}
-          {"stories": [{"selector":".athing","fields":{"title":".titleline","rank":".rank"}}]} → {"stories":[{"title":"Foo","rank":"1"}]}
+        ```text
+        {"karma": "#karma"} → {"karma":"42"}
+        {"items": [".story .title"]} → {"items":["Title 1","Title 2"]}
+        {"top3": [{"selector":".story .title","limit":3}]} → {"top3":["A","B","C"]}
+        {"links": [{"selector":"a.title","attr":"href"}]} → {"links":["https://site/a","https://site/b"]}
+        {"stories": [{"selector":".athing","fields":{"title":".titleline","rank":".rank"}}]} → {"stories":[{"title":"Foo","rank":"1"}]}
+        ```
 
         Args:
             schema: Extraction schema as a string: a JSON object literal mapping output field names to CSS-selector specs (see tool description). Not a JSON Schema.
@@ -292,7 +296,7 @@ class SessionMethods:
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return self.call("structuredData", url=url, timeout=timeout)
-    def tree(self, *, url: str | None = None, timeout: int | None = None, backend_node_id: int | None = None, max_depth: int | None = None) -> Any:
+    def tree(self, *, url: str | None = None, timeout: int | None = None, backend_node_id: int | None = None, max_depth: int | None = None, max_bytes: int | None = None) -> Any:
         """Semantic outline of the page as indented text: one node per line with its role, accessible name, value and backendNodeId, plus checked state and select options with the selected one marked. The default first read of an unfamiliar page; input and select values are already here, so no `nodeDetails` call is needed to read them. Pass `backendNodeId` to scope to a subtree and `maxDepth` to survey structure before going deeper. Read it again after any page-changing action, since the DOM it describes may have changed; use `nodeDetails` to turn a backendNodeId into a CSS selector for actions.
 
         Args:
@@ -300,8 +304,9 @@ class SessionMethods:
             timeout: Optional timeout in milliseconds. Defaults to 10000.
             backend_node_id: Optional backend node ID to get the tree for a specific element instead of the document root. 0 is treated as omitted.
             max_depth: Optional maximum depth of the tree to return. Useful for exploring high-level structure first.
+            max_bytes: Optional cap on output size in bytes. Past it, lines are kept by priority (alerts, dialogs, invalid fields and the focused element, then controls and named nodes, then text; list entries breadth-first), and dropped lines are counted in a '[+N more @id]' marker. id is the backendNodeId of the node holding them, often a list item or list that isn't printed itself: call tree with backendNodeId=id to read them.
         """
-        return self.call("tree", url=url, timeout=timeout, backend_node_id=backend_node_id, max_depth=max_depth)
+        return self.call("tree", url=url, timeout=timeout, backend_node_id=backend_node_id, max_depth=max_depth, max_bytes=max_bytes)
     def wait_for_script(self, *, script: str, timeout: int | None = None) -> Any:
         """Wait until a JS expression returns truthy. Re-evaluates on each tick of the event loop. Use for synchronization beyond what CSS selectors can express — e.g. `window.dataLoaded === true`, `document.readyState === 'complete'`, `document.querySelectorAll('.row').length >= 5`.
 
@@ -369,21 +374,25 @@ class AsyncSessionMethods:
         return await self.call("evaluate", script=script, url=url, timeout=timeout, save=save)
     async def extract(self, *, schema: str | dict | list, save: str | None = None) -> Any:
         """Extract structured data from the current page (navigate first). `schema` is a JSON object (passed as a string) mapping output field names to CSS-selector specs. It is NOT a JSON Schema — no "type"/"properties" wrappers; the keys ARE your output fields. Value shapes:
-          "<sel>"                                → first match's text (trimmed; null if no match)
-          ["<sel>"]                              → every match's text (string[])
-          {"selector":"<sel>","attr":"<name>"}   → first match's attribute value (href/src resolved to absolute URLs)
-          [{"selector":"<sel>","attr":"<name>"}] → every match's attribute (string[])
-          [{"selector":"<sel>","fields":{…}}]    → one object per match; field selectors resolve relative to that match and accept any shape above ("" = the match's own text; nest arrays for per-item sub-lists)
+        ```text
+        "<sel>"                                → first match's text (trimmed; null if no match)
+        ["<sel>"]                              → every match's text (string[])
+        {"selector":"<sel>","attr":"<name>"}   → first match's attribute value (href/src resolved to absolute URLs)
+        [{"selector":"<sel>","attr":"<name>"}] → every match's attribute (string[])
+        [{"selector":"<sel>","fields":{…}}]    → one object per match; field selectors resolve relative to that match and accept any shape above ("" = the match's own text; nest arrays for per-item sub-lists)
+        ```
         Add "limit": N inside any array's object spec to cap matches.
         Every extracted value is a string or null — parse numbers downstream. An empty array is a valid result, but if ALL top-level keys miss, the call errors: inspect the page (tree/markdown) and retry with corrected selectors.
         Finish data tasks with extract — it is the only read recorded as a replayable `extract(...)` script call; answers lifted from `markdown` text in chat are not.
 
         Examples (schema → result):
-          {"karma": "#karma"} → {"karma":"42"}
-          {"items": [".story .title"]} → {"items":["Title 1","Title 2"]}
-          {"top3": [{"selector":".story .title","limit":3}]} → {"top3":["A","B","C"]}
-          {"links": [{"selector":"a.title","attr":"href"}]} → {"links":["https://site/a","https://site/b"]}
-          {"stories": [{"selector":".athing","fields":{"title":".titleline","rank":".rank"}}]} → {"stories":[{"title":"Foo","rank":"1"}]}
+        ```text
+        {"karma": "#karma"} → {"karma":"42"}
+        {"items": [".story .title"]} → {"items":["Title 1","Title 2"]}
+        {"top3": [{"selector":".story .title","limit":3}]} → {"top3":["A","B","C"]}
+        {"links": [{"selector":"a.title","attr":"href"}]} → {"links":["https://site/a","https://site/b"]}
+        {"stories": [{"selector":".athing","fields":{"title":".titleline","rank":".rank"}}]} → {"stories":[{"title":"Foo","rank":"1"}]}
+        ```
 
         Args:
             schema: Extraction schema as a string: a JSON object literal mapping output field names to CSS-selector specs (see tool description). Not a JSON Schema.
@@ -605,7 +614,7 @@ class AsyncSessionMethods:
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return await self.call("structuredData", url=url, timeout=timeout)
-    async def tree(self, *, url: str | None = None, timeout: int | None = None, backend_node_id: int | None = None, max_depth: int | None = None) -> Any:
+    async def tree(self, *, url: str | None = None, timeout: int | None = None, backend_node_id: int | None = None, max_depth: int | None = None, max_bytes: int | None = None) -> Any:
         """Semantic outline of the page as indented text: one node per line with its role, accessible name, value and backendNodeId, plus checked state and select options with the selected one marked. The default first read of an unfamiliar page; input and select values are already here, so no `nodeDetails` call is needed to read them. Pass `backendNodeId` to scope to a subtree and `maxDepth` to survey structure before going deeper. Read it again after any page-changing action, since the DOM it describes may have changed; use `nodeDetails` to turn a backendNodeId into a CSS selector for actions.
 
         Args:
@@ -613,8 +622,9 @@ class AsyncSessionMethods:
             timeout: Optional timeout in milliseconds. Defaults to 10000.
             backend_node_id: Optional backend node ID to get the tree for a specific element instead of the document root. 0 is treated as omitted.
             max_depth: Optional maximum depth of the tree to return. Useful for exploring high-level structure first.
+            max_bytes: Optional cap on output size in bytes. Past it, lines are kept by priority (alerts, dialogs, invalid fields and the focused element, then controls and named nodes, then text; list entries breadth-first), and dropped lines are counted in a '[+N more @id]' marker. id is the backendNodeId of the node holding them, often a list item or list that isn't printed itself: call tree with backendNodeId=id to read them.
         """
-        return await self.call("tree", url=url, timeout=timeout, backend_node_id=backend_node_id, max_depth=max_depth)
+        return await self.call("tree", url=url, timeout=timeout, backend_node_id=backend_node_id, max_depth=max_depth, max_bytes=max_bytes)
     async def wait_for_script(self, *, script: str, timeout: int | None = None) -> Any:
         """Wait until a JS expression returns truthy. Re-evaluates on each tick of the event loop. Use for synchronization beyond what CSS selectors can express — e.g. `window.dataLoaded === true`, `document.readyState === 'complete'`, `document.querySelectorAll('.row').length >= 5`.
 
