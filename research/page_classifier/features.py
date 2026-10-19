@@ -9,10 +9,19 @@ Three views of one row from collect.py:
   vendors' scripts.
 - `rules`: hand-written preset guesses from those flags, the baseline any
   model has to beat.
+
+The n-grams of `text` (`ngrams`) are defined on its UTF-8 bytes, so that the
+browser can compute the very same ones without Unicode tables: only ASCII
+letters are lowercased, and every byte from 0x80 up counts as a word
+character. Each n-gram is hashed with MurmurHash3 (x86, 32 bits, seed 0)
+into one of 2**HASH_BITS buckets, so the model needs no vocabulary.
 """
 
 import re
+from collections import Counter
 from urllib.parse import urlsplit
+
+from sklearn.utils import murmurhash3_32
 
 PRESETS = [
     "is_blocked",
@@ -65,6 +74,50 @@ def text(row: dict) -> str:
     parts = urlsplit(row.get("url") or "")
     path = re.sub(r"[/_.?=&-]+", " ", parts.path + " " + parts.query)
     return f"url {parts.netloc} {path}\nstatus {row.get('status')}\ntitle {row.get('title') or ''}\n{row.get('tree') or ''}"
+
+
+HASH_BITS = 20
+CHAR_SIZES = (3, 4, 5)
+LOWER = bytes.maketrans(b"ABCDEFGHIJKLMNOPQRSTUVWXYZ", b"abcdefghijklmnopqrstuvwxyz")
+# Two or more word bytes: ASCII letters (already lowercased), digits, '_',
+# and any byte of a UTF-8 multi-byte sequence.
+WORD = re.compile(rb"[0-9a-z_\x80-\xff]{2,}")
+_buckets: dict[bytes, int] = {}
+
+
+def bucket(ngram: bytes) -> int:
+    """The n-gram's hash bucket (Zig: Murmur3_32.hashWithSeed(ngram, 0))."""
+    found = _buckets.get(ngram)
+    if found is None:
+        found = _buckets[ngram] = murmurhash3_32(ngram, seed=0, positive=True) & ((1 << HASH_BITS) - 1)
+    return found
+
+
+def words(data: bytes) -> list[bytes]:
+    """Every word, then every two adjacent words joined by a space."""
+    found = WORD.findall(data)
+    return found + [a + b" " + b for a, b in zip(found, found[1:])]
+
+
+def chars(data: bytes) -> list[bytes]:
+    """sklearn's char_wb: each piece between ASCII whitespace padded with a space
+    on both sides, cut into windows of CHAR_SIZES bytes. A padded piece no
+    longer than a size counts once, whole, and stops the larger sizes."""
+    out = []
+    for piece in data.split():
+        padded = b" " + piece + b" "
+        for n in CHAR_SIZES:
+            if len(padded) <= n:
+                out.append(padded)
+                break
+            out += [padded[i : i + n] for i in range(len(padded) - n + 1)]
+    return out
+
+
+def ngrams(row: dict) -> tuple[Counter, Counter]:
+    """How often each word and each char bucket occurs in the page's text."""
+    data = text(row).encode().translate(LOWER)
+    return Counter(map(bucket, words(data))), Counter(map(bucket, chars(data)))
 
 
 def structure(row: dict) -> dict[str, float]:

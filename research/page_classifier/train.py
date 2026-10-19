@@ -24,7 +24,8 @@ Models, cheapest first:
 - rules: the hand-written guesses in features.py.
 - linear: logistic regression per preset over word and char n-grams of the
   tree plus the structural features. A weight vector per preset, small and
-  easy to port.
+  easy to port: the n-grams are hashed (features.ngrams), so the browser
+  needs the weights of the buckets it can meet, not a vocabulary.
 
 A preset fires when its score reaches that preset's own threshold. Rare
 presets score low even on the pages that have them, so a shared 0.5 misses
@@ -44,12 +45,12 @@ from time import perf_counter
 
 import joblib
 import numpy as np
-from scipy.sparse import hstack
+from scipy.sparse import csr_matrix, hstack
 from sklearn.feature_extraction import DictVectorizer
-from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import f1_score
 from sklearn.model_selection import GroupKFold, GroupShuffleSplit
+from sklearn.preprocessing import normalize
 
 import features
 from features import PRESETS
@@ -106,23 +107,67 @@ def site(row: dict) -> str:
     return host.removeprefix("www.")
 
 
+class HashedTfidf:
+    """TF-IDF over one family of hashed n-gram counts, as sklearn's
+    TfidfVectorizer(sublinear_tf=True) computes it: 1 + ln(count), times the
+    smooth idf ln((1 + pages) / (1 + pages with it)) + 1, the row scaled to
+    unit length. Buckets in fewer than min_df training pages are dropped,
+    and of the rest only the max_features most frequent are kept (ties go
+    to the lower bucket).
+
+    Columns are the kept buckets in increasing order (`buckets`), so the
+    weights the browser needs are the ones for those buckets."""
+
+    def __init__(self, max_features: int, min_df: int = 2):
+        self.max_features = max_features
+        self.min_df = min_df
+
+    def fit(self, counts: list[dict]) -> "HashedTfidf":
+        df, total = {}, {}
+        for page in counts:
+            for b, n in page.items():
+                df[b] = df.get(b, 0) + 1
+                total[b] = total.get(b, 0) + n
+        frequent = sorted((b for b, n in df.items() if n >= self.min_df), key=lambda b: (-total[b], b))
+        kept = sorted(frequent[: self.max_features])
+        self.buckets = np.array(kept, dtype=np.int64)
+        self.idf = np.log((1 + len(counts)) / (1 + np.array([df[b] for b in kept], dtype=float))) + 1
+        return self
+
+    def transform(self, counts: list[dict]):
+        rows, cols, vals = [], [], []
+        for r, page in enumerate(counts):
+            keys = np.fromiter(page.keys(), dtype=np.int64, count=len(page))
+            tf = np.fromiter(page.values(), dtype=float, count=len(page))
+            at = np.searchsorted(self.buckets, keys).clip(max=len(self.buckets) - 1)
+            hit = self.buckets[at] == keys
+            rows.append(np.full(hit.sum(), r))
+            cols.append(at[hit])
+            vals.append((1 + np.log(tf[hit])) * self.idf[at[hit]])
+        m = csr_matrix((np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))),
+                       shape=(len(counts), len(self.buckets)))
+        return normalize(m)
+
+
 class Linear:
     """One logistic regression per preset over n-grams plus structure."""
 
     def __init__(self, c: float = 4.0):
         self.c = c
-        self.words = TfidfVectorizer(ngram_range=(1, 2), min_df=2, max_features=100_000, sublinear_tf=True)
-        self.chars = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5), min_df=2, max_features=200_000, sublinear_tf=True)
+        self.words = HashedTfidf(max_features=100_000)
+        self.chars = HashedTfidf(max_features=200_000)
         self.shape = DictVectorizer()
         self.models: dict[str, LogisticRegression | float] = {}
         self.thresholds = np.full(len(PRESETS), 0.5)
 
     def matrix(self, rows, fit=False):
-        texts = [features.text(r) for r in rows]
+        words, chars = zip(*(ngrams(r) for r in rows))
         shapes = [structure(r) for r in rows]
         if fit:
-            return hstack([self.words.fit_transform(texts), self.chars.fit_transform(texts), self.shape.fit_transform(shapes)]).tocsr()
-        return hstack([self.words.transform(texts), self.chars.transform(texts), self.shape.transform(shapes)]).tocsr()
+            self.words.fit(words)
+            self.chars.fit(chars)
+            return hstack([self.words.transform(words), self.chars.transform(chars), self.shape.fit_transform(shapes)]).tocsr()
+        return hstack([self.words.transform(words), self.chars.transform(chars), self.shape.transform(shapes)]).tocsr()
 
     def fit(self, rows):
         x = self.matrix(rows, fit=True)
@@ -147,6 +192,13 @@ class Linear:
 
     def decide(self, scores: np.ndarray) -> np.ndarray:
         return scores >= self.thresholds
+
+
+def ngrams(row: dict) -> tuple:
+    """features.ngrams, kept on the row like structure."""
+    if "_ngrams" not in row:
+        row["_ngrams"] = features.ngrams(row)
+    return row["_ngrams"]
 
 
 def structure(row: dict) -> dict:
@@ -231,4 +283,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # Run as the module `train`, so the pickled model refers to train.Linear
+    # and loads anywhere train.py is importable, not only inside this script.
+    import train
+
+    train.main()
