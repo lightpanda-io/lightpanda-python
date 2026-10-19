@@ -52,7 +52,8 @@ VENDORS = {
                 "metered"],
     "spinner": ["spinner", "skeleton", "shimmer", "loading...", 'aria-busy="true"'],
 }
-assert all(s.isascii() and s == s.lower() for found in VENDORS.values() for s in found)
+# The browser finds them all in one pass keyed on their first four bytes.
+assert all(s.isascii() and s == s.lower() and len(s) >= 4 for found in VENDORS.values() for s in found)
 
 # Phrases in the visible text, all languages folded into one pattern each.
 PHRASES = {

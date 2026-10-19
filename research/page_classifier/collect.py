@@ -8,13 +8,16 @@
 # ///
 """Crawl the URL list and label each page with Jev, for training a local model.
 
-Each row of the output JSONL holds what Jev sees (url, title, status and the
-semantic tree, as the browser's classify sends it), the page's HTML for
-feature extraction, and JUDGES `classify()` calls on that one load. Each call
-also asks every preset in a second wording (REWORDED), so a preset gets two
-votes per call. Jev rarely changes its answer to the same question, but a
-page where two wordings disagree is one whose label is in doubt. train.py
-labels each preset by a majority of the votes and drops the rest.
+Each row of the output JSONL holds what the browser's local model reads of
+the page, which classify returns beside its answers when asked with
+`includeInput`: the url,
+title, status and semantic tree exactly as classify sends them to Jev, and
+the page's HTML as the html tool renders it, both cut to the model's sizes.
+Then come JUDGES `classify()` calls on that one load. train.py labels each
+preset by a majority of the calls, which with two means both must agree, and
+leaves it undecided otherwise. Each call also asks every preset in a second
+wording (REWORDED). Those answers do not vote, but a page where the two
+wordings disagree is one whose label is in doubt, for review.py.
 
 Jev may favor questions by their position in the call, so the first call
 asks all the questions in a random order and the second in the reverse one:
@@ -22,8 +25,9 @@ each is asked once early and once late. Each row records the orders.
 
 Rows are appended as pages finish, and URLs already in the output are
 skipped, so an interrupted crawl resumes where it stopped. A row with fewer
-calls than JUDGES, or from before the shuffled orders, is dropped and crawled again, so all of a page's votes
-come from the same load. A preset added to REWORDED later is asked of the
+calls than JUDGES, from before the shuffled orders or from before
+`includeInput` (marked by `input`), is dropped and crawled again, so all of a
+page's votes come from the same load. A preset added to REWORDED later is asked of the
 stored pages by extend.py, not by crawling them again.
 
 Needs TYPESAFE_API_KEY. Run:
@@ -44,12 +48,10 @@ from lightpanda import AsyncBrowser, LightpandaError
 HERE = Path(__file__).parent
 DATA = HERE / "data"
 
-# The browser sends Jev at most this much of the tree (classify.zig's
-# max_state_bytes).
-MAX_TREE_BYTES = 8192
-# Enough HTML for the scripts and banners the features look for.
-MAX_HTML_BYTES = 256 * 1024
-# Jev labels each page this many times, for train.py's majority vote.
+# Jev labels each page this many times, for train.py's majority vote. Two
+# is the fewest that ask each question both early and late in a call; on
+# the first crawl a third would have settled at most 0.7% of the labels,
+# the ones where only one call was confident.
 JUDGES = 2
 
 # Each preset asked again in other words, keyed by the preset it shadows.
@@ -68,10 +70,6 @@ REWORDED = {
     "is_rate_limited": "Does the site refuse to show this page because the visitor made too many requests in a short time?",
 }
 
-# The tree tool prints each node's backendNodeId first; classify's tree has none.
-NODE_ID = re.compile(r"^( *)\d+ ", re.MULTILINE)
-
-
 def camel(name: str) -> str:
     head, *rest = name.split("_")
     return head + "".join(part.title() for part in rest)
@@ -82,36 +80,48 @@ def snake(name: str) -> str:
 
 
 def complete(row: dict) -> bool:
-    """Whether the row has every call, asked in the current shuffled form."""
-    return len(row["jev"]) >= JUDGES and "jev_orders" in row
+    """Whether the row has every call, asked in the current shuffled form,
+    on the local model's own input."""
+    return len(row["jev"]) >= JUDGES and "jev_orders" in row and row.get("input") == "classify"
 
 
-def cap(text: str, limit: int) -> str:
-    return text.encode()[:limit].decode(errors="ignore")
+def questions_for(presets) -> dict:
+    """Each preset asked by its camelCase name set to true, and again in its
+    rewording, keyed `re_<preset>`."""
+    return {camel(key): True for key in presets} | {f"re_{key}": REWORDED[key] for key in presets}
+
+
+async def judge(page, questions: dict) -> tuple[dict, list, list, list]:
+    """Asks the loaded page `questions` JUDGES times, in a random order and
+    then reversed. Returns what the browser's local model reads of the page
+    (url, title, status, tree and html, from the first call), each call's
+    answers by snake_case key, the orders and each call's seconds."""
+    order = random.sample(list(questions), len(questions))
+    orders = [order if i % 2 == 0 else order[::-1] for i in range(JUDGES)]
+    local, scores, seconds = None, [], []
+    for i, keys in enumerate(orders):
+        start = perf_counter()
+        result = await page.call("classify", questions={key: questions[key] for key in keys},
+                                 includeInput=True if i == 0 else None)
+        if i == 0:
+            local, result = result["input"], result["answers"]
+        scores.append({snake(key): result.get(key) for key in keys})
+        seconds.append(round(perf_counter() - start, 3))
+    return local, scores, [[snake(key) for key in keys] for keys in orders], seconds
 
 
 async def visit(page, url: str, timeout: int) -> dict:
-    loaded = await page.goto(url=url, timeout=timeout)
-    tree = NODE_ID.sub(r"\1", await page.tree())
-    html = await page.html()
-    # A preset is asked by its camelCase name set to true, a rewording as text.
-    questions = {camel(key): True for key in REWORDED} | {f"re_{key}": q for key, q in REWORDED.items()}
-    order = random.sample(list(questions), len(questions))
-    orders = [order if i % 2 == 0 else order[::-1] for i in range(JUDGES)]
-    scores, seconds = [], []
-    for keys in orders:
-        start = perf_counter()
-        answers = await page.classify(questions={key: questions[key] for key in keys})
-        scores.append({snake(key): answers.get(key) for key in keys})
-        seconds.append(round(perf_counter() - start, 3))
+    await page.goto(url=url, timeout=timeout)
+    local, scores, orders, seconds = await judge(page, questions_for(REWORDED))
     return {
-        "url": loaded.url or url,
-        "title": loaded.title,
-        "status": loaded.http_status,
-        "tree": cap(tree, MAX_TREE_BYTES),
-        "html": cap(html, MAX_HTML_BYTES),
+        "url": local["url"] or url,
+        "title": local["title"] or None,
+        "status": local["status"] or None,
+        "tree": local["tree"],
+        "html": local["html"],
+        "input": "classify",
         "jev": scores,
-        "jev_orders": [[snake(key) for key in keys] for keys in orders],
+        "jev_orders": orders,
         "jev_seconds": seconds,
     }
 

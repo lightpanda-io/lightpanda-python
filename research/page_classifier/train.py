@@ -9,7 +9,8 @@ that memorized a site's layout would otherwise look better than it is.
 
 Labels are a majority vote of Jev's calls on the preset question itself: a
 preset is yes when most calls score it above --confidence, no when most score
-it below 1 - --confidence, and undecided otherwise. An undecided preset is
+it below 1 - --confidence, and undecided otherwise. With collect.py's two
+calls a majority is both: they must agree. An undecided preset is
 left out of that preset's training and scoring, which keeps Jev's borderline
 answers from teaching the model noise.
 
@@ -60,8 +61,8 @@ DATA = HERE / "data"
 
 
 def vote(scores: list, confidence: float) -> int | None:
-    """1 or 0 when most calls are confident of it, else None. A call that
-    gave no answer votes for neither."""
+    """1 or 0 when most calls are confident of it (with two calls, both),
+    else None. A call that gave no answer votes for neither."""
     majority = len(scores) // 2 + 1
     if sum(s is not None and s > confidence for s in scores) >= majority:
         return 1

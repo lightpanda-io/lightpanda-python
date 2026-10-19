@@ -30,12 +30,11 @@ Needs TYPESAFE_API_KEY and a browser with the new presets. Run:
 import argparse
 import asyncio
 import json
-import random
 import sys
 from pathlib import Path
 from time import perf_counter
 
-from collect import DATA, JUDGES, MAX_TREE_BYTES, NODE_ID, REWORDED, camel, cap, complete, snake
+from collect import DATA, REWORDED, complete, judge, questions_for
 from lightpanda import AsyncBrowser, LightpandaError, ProcessError
 
 
@@ -52,20 +51,11 @@ def similarity(a: str, b: str) -> float:
 
 
 async def ask(page, row: dict, presets: list[str], timeout: int) -> dict:
-    loaded = await page.goto(url=row["seed"], timeout=timeout)
-    tree = cap(NODE_ID.sub(r"\1", await page.tree()), MAX_TREE_BYTES)
-    same = round(similarity(row["tree"], tree), 3)
-    added = {"seed": row["seed"], "presets": presets, "status": loaded.http_status, "similarity": same}
-    questions = {camel(p): True for p in presets} | {f"re_{p}": REWORDED[p] for p in presets}
-    order = random.sample(list(questions), len(questions))
-    orders = [order if i % 2 == 0 else order[::-1] for i in range(JUDGES)]
-    scores, seconds = [], []
-    for keys in orders:
-        start = perf_counter()
-        answers = await page.classify(questions={key: questions[key] for key in keys})
-        scores.append({snake(key): answers.get(key) for key in keys})
-        seconds.append(round(perf_counter() - start, 3))
-    return added | {"jev": scores, "orders": [[snake(k) for k in keys] for keys in orders], "seconds": seconds}
+    await page.goto(url=row["seed"], timeout=timeout)
+    local, scores, orders, seconds = await judge(page, questions_for(presets))
+    return {"seed": row["seed"], "presets": presets, "status": local["status"] or None,
+            "similarity": round(similarity(row["tree"], local["tree"]), 3),
+            "jev": scores, "orders": orders, "seconds": seconds}
 
 
 async def visit(browser, slots, out, row: dict, presets: list[str], timeout: int, counts: dict):

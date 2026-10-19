@@ -8,18 +8,20 @@ data/model.lpcm holds everything the browser needs to score a page as
 train.py's linear model does, and nothing it has to know beforehand except
 how features.py computes the features:
 
-    "LPCM", u32 version (2)
+    "LPCM", u32 version (3)
     u32 hash bits, u32 count + u32 char n-gram sizes
     u32 presets, each: str name, f32 threshold, u8 kind, f32 value
         kind 0: a logistic regression, value its intercept
         kind 1: a constant score (too few positives to learn), value it
-    u32 matchers, each: str name, str subject, str pattern (MATCHERS)
-    u32 literal features, each: str name, u32 count + str strings: 1 when
-        the ASCII-lowercased HTML holds any of the strings (VENDORS)
+    u32 matchers, each: str subject, str pattern (MATCHERS)
+    u32 literal features, each: u32 count + str strings: 1 when the
+        ASCII-lowercased HTML holds any of the strings (VENDORS)
     u32 tags, each: str tag (TAGS)
     u32 word buckets, then u32 bucket[] and f32 idf[], buckets increasing
     u32 char buckets, the same
-    u32 structure features, each: str name, in column order
+    u32 structure features, in column order, each a u8 kind then:
+        kind 0, a measure the browser computes itself: str name
+        kind 1, 2, 3, a matcher, literal feature or tag: u32 its index
     f32 weights[columns][presets]: the word columns, the char columns, then
         the structure ones; a column's weights for every preset together
 
@@ -52,8 +54,25 @@ def string(value: str) -> bytes:
     return struct.pack("<I", len(data)) + data
 
 
+# A structure column's kind, by where features.py defines its feature.
+SECTIONS = [
+    (1, [name for name, _, _ in features.MATCHERS]),
+    (2, [f"vendor_{name}" for name in features.VENDORS]),
+    (3, [f"tag_{tag}" for tag in features.TAGS]),
+]
+
+
+def column(name: str) -> bytes:
+    """A structure column as the browser finds its feature: the index of the
+    matcher, literal feature or tag it is, or the name of a measure."""
+    for kind, names in SECTIONS:
+        if name in names:
+            return struct.pack("<BI", kind, names.index(name))
+    return struct.pack("<B", 0) + string(name)
+
+
 def model_bytes(model) -> bytes:
-    out = [b"LPCM", struct.pack("<II", 2, features.HASH_BITS)]
+    out = [b"LPCM", struct.pack("<II", 3, features.HASH_BITS)]
     out.append(struct.pack(f"<I{len(features.CHAR_SIZES)}I", len(features.CHAR_SIZES), *features.CHAR_SIZES))
     out.append(struct.pack("<I", len(PRESETS)))
     columns = len(model.words.buckets) + len(model.chars.buckets) + len(model.shape.feature_names_)
@@ -66,10 +85,9 @@ def model_bytes(model) -> bytes:
         if not constant:
             weights[:, i] = fitted.coef_[0]
     out.append(struct.pack("<I", len(features.MATCHERS)))
-    out += [string(name) + string(subject) + string(pattern) for name, subject, pattern in features.MATCHERS]
+    out += [string(subject) + string(pattern) for _, subject, pattern in features.MATCHERS]
     out.append(struct.pack("<I", len(features.VENDORS)))
-    for name, found in features.VENDORS.items():
-        out.append(string(f"vendor_{name}") + struct.pack("<I", len(found)) + b"".join(map(string, found)))
+    out += [struct.pack("<I", len(found)) + b"".join(map(string, found)) for found in features.VENDORS.values()]
     out.append(struct.pack("<I", len(features.TAGS)))
     out += [string(tag) for tag in features.TAGS]
     for family in (model.words, model.chars):
@@ -77,7 +95,7 @@ def model_bytes(model) -> bytes:
         out.append(family.buckets.astype("<u4").tobytes())
         out.append(family.idf.astype("<f4").tobytes())
     out.append(struct.pack("<I", len(model.shape.feature_names_)))
-    out += [string(name) for name in model.shape.feature_names_]
+    out += [column(name) for name in model.shape.feature_names_]
     out.append(weights.tobytes())
     return b"".join(out)
 
