@@ -110,6 +110,15 @@ class PageVerdict:
     is_loading: bool
     """The page says it is still loading (spinners, placeholders, loading
     text). A page that is blank while it loads says nothing, so this misses it."""
+    is_age_gate: bool
+    """An age check, asking the visitor to confirm they are an adult or to
+    give their date of birth, covers the content."""
+    is_region_blocked: bool
+    """The site says its content is not available in the visitor's country
+    or region. Usually an error page too."""
+    is_rate_limited: bool
+    """The site says too many requests were sent, and to slow down or try
+    again later. Usually an error page too."""
     scores: dict[str, float | None]
     """Each check's probability, keyed by its attribute name."""
     answers: dict
