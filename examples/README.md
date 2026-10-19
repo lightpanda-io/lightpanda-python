@@ -345,14 +345,14 @@ Runs from this checkout against a local browser build, like `classify_pages.py`:
 LIGHTPANDA_BIN=../browser/zig-out/bin/lightpanda uv run examples/triage_crawl.py
 ```
 
-`--model PATH` starts the browser with `--classify-model`, so the presets its
-local model is sure of are answered without Jev. The example's own `kind`
-question still goes to Jev, so it calls Jev on every page either way, with
-fewer questions.
+`--model PATH` starts the browser with `--classify-model` and asks the presets
+only, leaving out `kind` (only Jev could answer it), so kept pages say `ok`.
+The browser answers the presets its local model is sure of and calls Jev only
+for the rest, so a page the model is sure of costs no Jev call at all.
 
-`--local` leaves Jev out: it asks the presets only, without the key, so the
-browser answers a page only when its model is sure of every preset. The rest
-print as `jev?`, the pages a cascade would still send to Jev:
+`--local` also keeps the key from the browser, so it never calls Jev: a page
+is answered only when the model is sure of every preset, and the rest print
+as `jev?`, the pages the cascade would send to Jev:
 
 ```bash
 uv run examples/triage_crawl.py --model research/page_classifier/data/model.lpcm --local

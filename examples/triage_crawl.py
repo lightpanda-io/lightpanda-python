@@ -13,10 +13,10 @@ questions. The verdict decides what happens next: back off when the site
 says we are going too fast, accept a cookie wall and look again, wait for a
 page that is still loading, or skip the page and say why.
 
-With --model, the browser answers the presets its local model is sure of
-(a model.lpcm exported by research/page_classifier) and asks Jev only the
-rest, so run it with and without to compare. Add --local to leave Jev out
-altogether: only the presets are asked, and a page the model is unsure of is
+With --model, only the presets are asked, and the browser answers the ones
+its local model is sure of (a model.lpcm exported by research/page_classifier)
+and asks Jev only the rest, so run it with and without to compare. Add
+--local to leave Jev out altogether: a page the model is unsure of is
 reported as one that would need Jev.
 
 Needs TYPESAFE_API_KEY, except with --local.
@@ -83,9 +83,13 @@ QUESTIONS = {
 # Accept buttons start with one of these, in the languages we crawl.
 ACCEPT = "/^(accept|aceptar|accepter|akzeptieren|agree|allow)/i"
 
+# A call this quick never reached Jev: the local model answered it all.
+LOCAL_SECONDS = 0.1
+
 TTY = sys.stdout.isatty()
-jev_times = []
-local = False  # --local: ask the presets only, and never Jev
+call_times = []
+presets_only = False  # --model: Jev answers only what the model is unsure of
+local = False  # --local: and never Jev
 
 
 class Unsure(Exception):
@@ -98,16 +102,18 @@ def paint(text, color):
 
 
 async def judge(page):
+    """The page's verdict, and who gave it: "jev" or "local"."""
     start = perf_counter()
     try:
-        verdict = await page.judge(questions=None if local else QUESTIONS)
+        verdict = await page.judge(questions=None if presets_only else QUESTIONS)
     except ToolError as err:
         # Without a key, the browser can only answer what its model is sure of.
         if local and "TYPESAFE_API_KEY" in str(err):
             raise Unsure from err
         raise
-    jev_times.append(perf_counter() - start)
-    return verdict
+    took = perf_counter() - start
+    call_times.append(took)
+    return verdict, "local" if local or presets_only and took < LOCAL_SECONDS else "jev"
 
 
 def rate_limited(verdict):
@@ -130,7 +136,7 @@ async def visit(page, url):
     start = perf_counter()
     actions = []
 
-    def show(verdict, action=None, detail=""):
+    def show(verdict, by, action=None, detail=""):
         if action:
             actions.append(action)
             status, note = paint("retry", "yellow"), paint(f"  -> {action}{detail}", "yellow")
@@ -139,33 +145,34 @@ async def visit(page, url):
         else:
             status, note = paint("skip ", "red"), ""
         took = paint(f"{perf_counter() - start:.2f}s", "dim")
-        print(f"{status}  {name:<44}  {describe(verdict):<22}  {took}{note}")
+        source = paint(f"{by:<5}  ", "dim") if presets_only and not local else ""
+        print(f"{status}  {name:<44}  {describe(verdict):<22}  {source}{took}{note}")
 
     await page.goto(url=url)
-    verdict = await judge(page)
+    verdict, by = await judge(page)
 
     for attempt in (1, 2):
         if not rate_limited(verdict):
             break
-        show(verdict, "back off", f" {3 * attempt}s")
+        show(verdict, by, "back off", f" {3 * attempt}s")
         await asyncio.sleep(3 * attempt)
         await page.goto(url=url)
-        verdict = await judge(page)
+        verdict, by = await judge(page)
 
     if verdict.is_consent_wall:
         found = await page.find_element(role="button", name=ACCEPT)
         if found:
-            show(verdict, "accept cookies")
+            show(verdict, by, "accept cookies")
             await found[0].click()
             await page.wait_for_state(state="networkidle")  # banners fade out
-            verdict = await judge(page)
+            verdict, by = await judge(page)
 
     if verdict.is_loading:
-        show(verdict, "wait")
+        show(verdict, by, "wait")
         await page.wait_for_state(state="networkidle")
-        verdict = await judge(page)
+        verdict, by = await judge(page)
 
-    show(verdict)
+    show(verdict, by)
     return verdict, actions
 
 
@@ -189,13 +196,14 @@ async def triage(browser, slots, url):
 
 async def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--model", help="answer the presets this local model is sure of without Jev")
-    parser.add_argument("--local", action="store_true", help="never ask Jev: only the presets, from --model")
+    parser.add_argument("--model", help="ask the presets only, and Jev only those this local model is unsure of")
+    parser.add_argument("--local", action="store_true", help="with --model: never ask Jev")
     opts = parser.parse_args()
     if opts.local and not opts.model:
         parser.error("--local needs --model")
-    global local
-    local, model = opts.local, opts.model
+    global presets_only, local
+    model, local = opts.model, opts.local
+    presets_only = bool(model)
     if local:
         os.environ.pop("TYPESAFE_API_KEY", None)  # the browser inherits our environment
 
@@ -217,10 +225,15 @@ async def main():
         f"({page_time:.1f}s of page time): {kept} kept, {len(results) - kept - unsure} skipped"
         + (f", {unsure} would ask Jev" if unsure else "")
     )
-    if jev_times:
+    if presets_only and not local:
+        quick = [t for t in call_times if t < LOCAL_SECONDS]
+        slow = [t for t in call_times if t >= LOCAL_SECONDS]
+        print(f"classify: {len(call_times)} calls, {len(quick)} answered locally, {len(slow)} through Jev", end="")
+        print(f" (median {statistics.median(slow):.2f}s)" if slow else "")
+    elif call_times:
         print(
-            f"{'Local' if local else 'Jev'}: {len(jev_times)} calls, median {statistics.median(jev_times):.2f}s, "
-            f"p90 {statistics.quantiles(jev_times, n=10)[-1]:.2f}s"
+            f"{'Local' if local else 'Jev'}: {len(call_times)} calls, median {statistics.median(call_times):.2f}s, "
+            f"p90 {statistics.quantiles(call_times, n=10)[-1]:.2f}s"
         )
     print("skipped: " + ", ".join(f"{reason} {n}" for reason, n in outcomes.most_common()))
     if acted:
