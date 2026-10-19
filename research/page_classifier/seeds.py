@@ -7,7 +7,12 @@
 Most pages come from the Tranco top list, which is mostly ordinary content.
 The presets are rare there, so each domain may also get a made-up path (an
 error page) or a login path (a login wall), and hand-picked seeds cover the
-rest: paywalled news, EU sites behind cookie walls, gibberish searches.
+rest: paywalled news, EU sites behind cookie walls, gibberish searches,
+age-gated drink, tobacco and adult sites, and sites that serve only some
+countries (the crawl runs from Spain). Rate limits get no seeds: no site
+limits its first request, so the crawl only meets them by chance.
+
+The `article` rows articles.py appended are kept.
 
 Run:  uv run research/page_classifier/seeds.py --domains 3000
 """
@@ -119,6 +124,61 @@ EMPTY_SEARCHES = [
     "https://www.youtube.com/results?search_query={q}",
 ]
 
+# Drink, tobacco, game and adult sites that ask the visitor's age first.
+AGE_GATES = [
+    "https://www.jackdaniels.com/",
+    "https://www.johnniewalker.com/",
+    "https://www.jamesonwhiskey.com/",
+    "https://www.heineken.com/",
+    "https://www.guinness.com/",
+    "https://www.budweiser.com/",
+    "https://www.coronausa.com/",
+    "https://www.bacardi.com/",
+    "https://www.absolut.com/",
+    "https://www.hennessy.com/",
+    "https://www.greygoose.com/",
+    "https://www.glenfiddich.com/",
+    "https://www.makersmark.com/",
+    "https://www.buffalotracedistillery.com/",
+    "https://www.juul.com/",
+    "https://www.vuse.com/",
+    "https://www.marlboro.com/",
+    "https://store.steampowered.com/app/271590/",
+    "https://store.steampowered.com/app/1091500/",
+    "https://www.pornhub.com/",
+    "https://xhamster.com/",
+    "https://www.redtube.com/",
+    "https://spankbang.com/",
+]
+
+# Streaming, betting, news and Japanese sites that refuse visitors from
+# outside their country, as seen from Spain.
+REGION_BLOCKS = [
+    "https://www.hulu.com/",
+    "https://www.sling.com/",
+    "https://www.fubo.tv/",
+    "https://www.philo.com/",
+    "https://www.cbs.com/live-tv/",
+    "https://www.itv.com/watch",
+    "https://www.channel4.com/",
+    "https://tver.jp/",
+    "https://abema.tv/",
+    "https://radiko.jp/",
+    "https://www.fanduel.com/",
+    "https://sportsbook.draftkings.com/",
+    "https://sports.betmgm.com/",
+    "https://www.caesars.com/sportsbook-and-casino",
+    "https://www.chicagotribune.com/",
+    "https://www.nydailynews.com/",
+    "https://www.baltimoresun.com/",
+    "https://www.orlandosentinel.com/",
+    "https://www.sun-sentinel.com/",
+    "https://www.courant.com/",
+    "https://www.stltoday.com/",
+    "https://buffalonews.com/",
+    "https://richmond.com/",
+]
+
 LOGIN_PATHS = ["/login", "/signin", "/account", "/user/login", "/my-account"]
 
 
@@ -154,8 +214,12 @@ def main():
             rows.append(("login", f"https://{domain}{rng.choice(LOGIN_PATHS)}"))
     rows += [("paywall", url) for url in PAYWALLS]
     rows += [("empty", url.format(q=NONSENSE)) for url in EMPTY_SEARCHES]
+    rows += [("age", url) for url in AGE_GATES]
+    rows += [("region", url) for url in REGION_BLOCKS]
 
     rng.shuffle(rows)  # mixes slow and fast hosts across the crawl
+    if args.out.exists():
+        rows += [tuple(line.split("\t")) for line in args.out.read_text().splitlines() if line.startswith("article\t")]
     args.out.parent.mkdir(exist_ok=True)
     args.out.write_text("".join(f"{source}\t{url}\n" for source, url in rows))
     print(f"{len(rows)} urls -> {args.out}")
