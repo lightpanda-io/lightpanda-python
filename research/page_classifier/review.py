@@ -62,11 +62,12 @@ def position_bias(rows):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--pages", type=Path, default=DATA / "pages.jsonl")
+    parser.add_argument("--gold", type=Path, default=DATA / "gold.jsonl")
     parser.add_argument("--confidence", type=float, default=0.7)
     parser.add_argument("--folds", type=int, default=5)
     args = parser.parse_args()
 
-    rows = load(args.pages, args.confidence)
+    rows = load(args.pages, args.confidence, args.gold)
     oof = np.zeros((len(rows), len(PRESETS)))
     groups = [site(r) for r in rows]
     for train_idx, test_idx in GroupKFold(n_splits=args.folds).split(rows, groups=groups):

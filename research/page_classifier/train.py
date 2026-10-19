@@ -69,10 +69,17 @@ def vote(scores: list, confidence: float) -> int | None:
     return None
 
 
-def load(path: Path, confidence: float) -> list[dict]:
+def load(path: Path, confidence: float, gold: Path | None = None) -> list[dict]:
     """The labelled pages, minus duplicates: many domains redirect to the same
     site, which would count it twice and could put it on both sides of the
-    split."""
+    split.
+
+    Each row's `vote` is Jev's majority vote, and its `label`, the one the
+    models learn, is the same unless the page was checked by hand (label.py
+    writes those to `gold`): then the hand label wins."""
+    checked = {}
+    if gold and gold.exists():
+        checked = {g["url"]: g["labels"] for g in map(json.loads, gold.open())}
     rows, seen = [], set()
     with path.open() as f:
         for line in f:
@@ -84,9 +91,11 @@ def load(path: Path, confidence: float) -> list[dict]:
                 continue
             seen.add(key)
             row["jev_calls"] = [[call.get(p) for p in PRESETS] for call in row["jev"]]
-            row["label"] = [vote([call.get(p) for call in row["jev"]], confidence) for p in PRESETS]
+            row["vote"] = [vote([call.get(p) for call in row["jev"]], confidence) for p in PRESETS]
             reworded = [vote([call.get(f"re_{p}") for call in row["jev"]], confidence) for p in PRESETS]
-            row["wording_doubt"] = [a is not None and b is not None and a != b for a, b in zip(row["label"], reworded)]
+            row["wording_doubt"] = [a is not None and b is not None and a != b for a, b in zip(row["vote"], reworded)]
+            hand = checked.get(row["url"])
+            row["label"] = [int(bool(hand.get(p))) for p in PRESETS] if hand else row["vote"]
             rows.append(row)
     return rows
 
@@ -168,15 +177,18 @@ def best_thresholds(rows: list[dict], folds: int) -> np.ndarray:
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--pages", type=Path, default=DATA / "pages.jsonl")
+    parser.add_argument("--gold", type=Path, default=DATA / "gold.jsonl", help="hand labels from label.py, which override Jev's")
     parser.add_argument("--confidence", type=float, default=0.7, help="score a vote needs to count as sure")
     parser.add_argument("--test", type=float, default=0.25, help="share of sites held out")
     parser.add_argument("--folds", type=int, default=3, help="folds for picking the thresholds")
     parser.add_argument("--seed", type=int, default=1)
     args = parser.parse_args()
 
-    rows = load(args.pages, args.confidence)
+    rows = load(args.pages, args.confidence, args.gold)
     labels = [label for r in rows for label in r["label"]]
-    print(f"{sum(label is None for label in labels) / len(labels):.1%} of preset labels undecided at {args.confidence}")
+    hand = sum(r["label"] is not r["vote"] for r in rows)
+    print(f"{sum(label is None for label in labels) / len(labels):.1%} of preset labels undecided at {args.confidence}, "
+          f"{hand} pages labelled by hand")
     groups = [site(r) for r in rows]
     train_idx, test_idx = next(GroupShuffleSplit(n_splits=1, test_size=args.test, random_state=args.seed).split(rows, groups=groups))
     train = [rows[i] for i in train_idx]
@@ -207,7 +219,7 @@ def main():
                 "url": row["url"],
                 "source": row["source"],
                 "jev_calls": row["jev_calls"],
-                "jev": row["label"],
+                "jev": row["vote"],
                 "rules": [rules[p] for p in PRESETS],
                 "linear": scores.round(4).tolist(),
             }) + "\n")
