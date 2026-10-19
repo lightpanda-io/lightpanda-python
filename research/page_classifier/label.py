@@ -49,6 +49,9 @@ PRESETS = [
     "is_paywall",
     "is_unsupported_browser",
     "is_loading",
+    "is_age_gate",
+    "is_region_blocked",
+    "is_rate_limited",
 ]
 NAMES = [p.removeprefix("is_") for p in PRESETS]
 PREVIEW_LINES = 40

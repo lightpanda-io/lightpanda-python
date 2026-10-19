@@ -24,6 +24,9 @@ PRESETS = [
     "is_paywall",
     "is_unsupported_browser",
     "is_loading",
+    "is_age_gate",
+    "is_region_blocked",
+    "is_rate_limited",
 ]
 
 # Fingerprints in the HTML (script urls, globals, ids) of the vendors that
@@ -47,6 +50,9 @@ PHRASES = {
     "javascript": r"enable javascript|javascript is (?:disabled|required)|browser is not supported|unsupported browser|update your browser|activez javascript|javascript aktivieren",
     "robot": r"are you a robot|not a robot|verify you are human|unusual traffic|access denied|checking your browser|too many requests",
     "loading": r"loading|chargement|wird geladen|cargando|caricamento",
+    "adult": r"\b18\+|over 18|18 years|of legal age|date of birth|enter your birth|i am 18|adults? only|mayor de edad|maggiorenne|volljährig|majeur",
+    "region": r"not available in your (?:country|region|location)|unavailable in your (?:country|region)|your (?:country|region|location) is not (?:supported|allowed)|geo-?(?:blocked|restricted)|restricted (?:territory|jurisdiction)|no disponible en tu (?:país|región)",
+    "rate": r"too many requests|rate limit|slow down|try again (?:later|in a (?:few|minute))|request limit|not able to serve your requests",
 }
 PHRASE_RES = {name: re.compile(pattern, re.IGNORECASE) for name, pattern in PHRASES.items()}
 
@@ -113,4 +119,7 @@ def rules(row: dict) -> dict[str, float]:
         "is_paywall": float(bool(f["vendor_paywall"] and f["says_subscribe"])),
         "is_unsupported_browser": float(bool(f["says_javascript"] and tiny)),
         "is_loading": float(bool(f["vendor_spinner"] and tiny and not f["status_4xx"])),
+        "is_age_gate": float(bool(f["says_adult"] and (tiny or f["tag_dialog"]))),
+        "is_region_blocked": float(bool(f["says_region"])),
+        "is_rate_limited": float(bool(f["status_429"] or (f["says_rate"] and tiny))),
     }

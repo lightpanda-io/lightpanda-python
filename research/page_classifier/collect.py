@@ -17,13 +17,14 @@ page where two wordings disagree is one whose label is in doubt. train.py
 labels each preset by a majority of the votes and drops the rest.
 
 Jev may favor questions by their position in the call, so the first call
-asks the 18 questions in a random order and the second in the reverse one:
+asks all the questions in a random order and the second in the reverse one:
 each is asked once early and once late. Each row records the orders.
 
 Rows are appended as pages finish, and URLs already in the output are
 skipped, so an interrupted crawl resumes where it stopped. A row with fewer
 calls than JUDGES, or from before the shuffled orders, is dropped and crawled again, so all of a page's votes
-come from the same load.
+come from the same load. A preset added to REWORDED later is asked of the
+stored pages by extend.py, not by crawling them again.
 
 Needs TYPESAFE_API_KEY. Run:
     uv run research/page_classifier/collect.py --limit 50
@@ -62,6 +63,9 @@ REWORDED = {
     "is_paywall": "Is the article or content locked or truncated until the visitor pays or subscribes?",
     "is_unsupported_browser": "Does the page tell the visitor to enable JavaScript, switch browsers or upgrade their browser before it will work?",
     "is_loading": "Is the page's main area still empty except for a spinner, skeleton boxes or a 'loading' message?",
+    "is_age_gate": "Must the visitor say they are over 18, or give their date of birth, before the site shows its content?",
+    "is_region_blocked": "Does the site refuse to show its content because of where the visitor is, such as their country?",
+    "is_rate_limited": "Does the site refuse to show this page because the visitor made too many requests in a short time?",
 }
 
 # The tree tool prints each node's backendNodeId first; classify's tree has none.

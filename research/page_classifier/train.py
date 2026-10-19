@@ -95,7 +95,8 @@ def load(path: Path, confidence: float, gold: Path | None = None) -> list[dict]:
             reworded = [vote([call.get(f"re_{p}") for call in row["jev"]], confidence) for p in PRESETS]
             row["wording_doubt"] = [a is not None and b is not None and a != b for a, b in zip(row["vote"], reworded)]
             hand = checked.get(row["url"])
-            row["label"] = [int(bool(hand.get(p))) for p in PRESETS] if hand else row["vote"]
+            # A preset added after the page was checked keeps Jev's vote.
+            row["label"] = [int(hand[p]) if p in hand else v for p, v in zip(PRESETS, row["vote"])] if hand else row["vote"]
             rows.append(row)
     return rows
 

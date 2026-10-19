@@ -102,7 +102,9 @@ def main():
         gold = {g["url"]: g["labels"] for g in map(json.loads, args.gold.open())}
         picked = [i for i, r in enumerate(rows) if r["url"] in gold]
         if picked:
-            truth = np.array([[bool(gold[rows[i]["url"]].get(p)) for p in PRESETS] for i in picked])
+            # A preset added after the page was checked counts as Jev voted.
+            truth = np.array([[gold[rows[i]["url"]][p] if p in gold[rows[i]["url"]] else jev[i, j]
+                               for j, p in enumerate(PRESETS)] for i in picked])
             print(f"\ngold: {len(picked)} hand-checked held-out pages, verdict accuracy")
             for name, guess in (("jev", jev), ("rules", rules), ("linear", linear)):
                 print(f"  {name:<7}{(~guess[picked].any(axis=1) == ~truth.any(axis=1)).mean():.1%}")
