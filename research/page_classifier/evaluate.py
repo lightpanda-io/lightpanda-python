@@ -14,7 +14,12 @@ verdict and the cascade.
 - Verdict: how often each one agrees with the vote on judge()'s `ok`, the
   keep-or-skip decision a crawl acts on.
 - Cascade: the share of pages where the linear model is sure of every
-  preset, and its verdict agreement on those. Jev answers the rest.
+  preset, and its verdict agreement on those. Jev answers the rest. Sure
+  means far from that preset's threshold: --sure is the band at a 0.5
+  threshold (below 0.1 or above 0.9), scaled to each side of the others.
+
+The linear model fires each preset at its own threshold, picked by train.py
+and read from data/train_meta.json.
 - Gold: with data/gold.jsonl (`{"url": ..., "labels": {"is_paywall": true,
   ...}}` per line, checked by hand), each one's accuracy against the truth.
 
@@ -61,16 +66,19 @@ def main():
     jev = vote == 1
     first = np.array([[s or 0.0 for s in r["jev_calls"][0]] for r in rows]) >= 0.5
     rules = np.array([r["rules"] for r in rows]) >= 0.5
+    meta_path = DATA / "train_meta.json"
+    meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+    thresholds = np.array(meta.get("thresholds", [0.5] * len(PRESETS)))
     linear_scores = np.array([r["linear"] for r in rows])
-    linear = linear_scores >= 0.5
+    linear = linear_scores >= thresholds
 
     print(f"{len(rows)} held-out pages, {1 - decided.mean():.1%} of their preset labels undecided\n")
-    print(f"{'preset':<24}{'pos':>5}  {'undec':>5}  {'jev#1':>5}  {'rules':>5}  {'linear':>6}  {'auc':>5}")
+    print(f"{'preset':<24}{'pos':>5}  {'undec':>5}  {'jev#1':>5}  {'rules':>5}  {'linear':>6}  {'auc':>5}  {'at':>4}")
     for i, preset in enumerate(PRESETS):
         d = decided[:, i]
         truth = jev[d, i]
         print(f"{preset:<24}{int(truth.sum()):>5}  {int((~d).sum()):>5}  {fmt(f1(truth, first[d, i]))} {fmt(f1(truth, rules[d, i]))}  "
-              f"{fmt(f1(truth, linear[d, i]))}  {fmt(auc(truth, linear_scores[d, i]))}")
+              f"{fmt(f1(truth, linear[d, i]))}  {fmt(auc(truth, linear_scores[d, i]))} {thresholds[i]:.2f}")
 
     whole = decided.all(axis=1)
     ok = ~jev[whole].any(axis=1)
@@ -78,7 +86,8 @@ def main():
     for name, guess in (("jev#1", first), ("rules", rules), ("linear", linear)):
         print(f"  {name:<7}{(~guess[whole].any(axis=1) == ok).mean():.1%}")
 
-    sure = ((linear_scores[whole] < args.sure) | (linear_scores[whole] > 1 - args.sure)).all(axis=1)
+    band = args.sure / 0.5
+    sure = ((linear_scores[whole] < thresholds * band) | (linear_scores[whole] > 1 - (1 - thresholds) * band)).all(axis=1)
     if sure.any():
         agree = (~linear[whole][sure].any(axis=1) == ok[sure]).mean()
         print(f"\ncascade: linear is sure on {sure.mean():.1%} of those pages, agreeing with Jev on {agree:.1%} of them;"
@@ -86,10 +95,8 @@ def main():
     else:
         print("\ncascade: linear is sure of no page")
 
-    meta = DATA / "train_meta.json"
-    if meta.exists():
-        m = json.loads(meta.read_text())
-        print(f"\nlinear: {m['linear_ms_per_page']} ms/page, {m['model_bytes'] / 1e6:.1f} MB, trained on {m['train']} pages")
+    if meta:
+        print(f"\nlinear: {meta['linear_ms_per_page']} ms/page, {meta['model_bytes'] / 1e6:.1f} MB, trained on {meta['train']} pages")
 
     if args.gold.exists():
         gold = {g["url"]: g["labels"] for g in map(json.loads, args.gold.open())}

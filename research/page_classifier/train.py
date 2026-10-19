@@ -26,6 +26,11 @@ Models, cheapest first:
   tree plus the structural features. A weight vector per preset, small and
   easy to port.
 
+A preset fires when its score reaches that preset's own threshold. Rare
+presets score low even on the pages that have them, so a shared 0.5 misses
+most of them; each threshold is the one with the best F1 on scores the
+training pages got from models trained without their site (--folds).
+
 Writes data/model.joblib and data/predictions.jsonl for evaluate.py.
 
 Run:  uv run research/page_classifier/train.py
@@ -43,7 +48,8 @@ from scipy.sparse import hstack
 from sklearn.feature_extraction import DictVectorizer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import GroupShuffleSplit
+from sklearn.metrics import f1_score
+from sklearn.model_selection import GroupKFold, GroupShuffleSplit
 
 import features
 from features import PRESETS
@@ -99,10 +105,11 @@ class Linear:
         self.chars = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5), min_df=2, max_features=200_000, sublinear_tf=True)
         self.shape = DictVectorizer()
         self.models: dict[str, LogisticRegression | float] = {}
+        self.thresholds = np.full(len(PRESETS), 0.5)
 
     def matrix(self, rows, fit=False):
         texts = [features.text(r) for r in rows]
-        shapes = [features.structure(r) for r in rows]
+        shapes = [structure(r) for r in rows]
         if fit:
             return hstack([self.words.fit_transform(texts), self.chars.fit_transform(texts), self.shape.fit_transform(shapes)]).tocsr()
         return hstack([self.words.transform(texts), self.chars.transform(texts), self.shape.transform(shapes)]).tocsr()
@@ -115,7 +122,7 @@ class Linear:
             if y.sum() < 3 or y.sum() == len(y):
                 self.models[preset] = float(y.mean()) if len(y) else 0.0  # too rare to learn yet
                 continue
-            model = LogisticRegression(C=self.c, max_iter=2000)
+            model = LogisticRegression(C=self.c, max_iter=2000, class_weight="balanced")
             model.fit(x[decided], y)
             self.models[preset] = model
         return self
@@ -128,12 +135,42 @@ class Linear:
             out[:, i] = model if isinstance(model, float) else model.predict_proba(x)[:, 1]
         return out
 
+    def decide(self, scores: np.ndarray) -> np.ndarray:
+        return scores >= self.thresholds
+
+
+def structure(row: dict) -> dict:
+    """features.structure, kept on the row: the HTML regexes are the slow
+    part, and the folds would run them again on every pass."""
+    if "_structure" not in row:
+        row["_structure"] = features.structure(row)
+    return row["_structure"]
+
+
+def best_thresholds(rows: list[dict], folds: int) -> np.ndarray:
+    """Each preset's F1-best threshold on out-of-fold scores, grouped by site."""
+    oof = np.zeros((len(rows), len(PRESETS)))
+    groups = [site(r) for r in rows]
+    for train_idx, test_idx in GroupKFold(n_splits=folds).split(rows, groups=groups):
+        oof[test_idx] = Linear().fit([rows[i] for i in train_idx]).predict([rows[i] for i in test_idx])
+    grid = np.linspace(0.02, 0.98, 49)
+    out = np.full(len(PRESETS), 0.5)
+    for i in range(len(PRESETS)):
+        decided = [j for j, r in enumerate(rows) if r["label"][i] is not None]
+        y = np.array([rows[j]["label"][i] for j in decided], dtype=bool)
+        if y.sum() < 3:
+            continue  # too few to pick from
+        f1s = [f1_score(y, oof[decided, i] >= t, zero_division=0) for t in grid]
+        out[i] = grid[int(np.argmax(f1s))]
+    return out
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--pages", type=Path, default=DATA / "pages.jsonl")
     parser.add_argument("--confidence", type=float, default=0.7, help="score a vote needs to count as sure")
     parser.add_argument("--test", type=float, default=0.25, help="share of sites held out")
+    parser.add_argument("--folds", type=int, default=3, help="folds for picking the thresholds")
     parser.add_argument("--seed", type=int, default=1)
     args = parser.parse_args()
 
@@ -147,14 +184,19 @@ def main():
     print(f"{len(rows)} pages from {len(set(groups))} sites: {len(train)} train, {len(test)} test")
 
     start = perf_counter()
+    thresholds = best_thresholds(train, args.folds)
+    print("thresholds: " + ", ".join(f"{p.removeprefix('is_')} {t:.2f}" for p, t in zip(PRESETS, thresholds)))
     linear = Linear().fit(train)
+    linear.thresholds = thresholds
     print(f"linear trained in {perf_counter() - start:.1f}s")
     start = perf_counter()
     linear_scores = linear.predict(test)
     per_page = (perf_counter() - start) / max(len(test), 1)
 
-    # The deployable model is trained on everything.
+    # The deployable model is trained on everything, with the thresholds
+    # picked on the training split.
     final = Linear().fit(rows)
+    final.thresholds = thresholds
     model_path = DATA / "model.joblib"
     joblib.dump(final, model_path, compress=3)
 
@@ -170,7 +212,7 @@ def main():
                 "linear": scores.round(4).tolist(),
             }) + "\n")
     meta = {"linear_ms_per_page": round(per_page * 1000, 2), "model_bytes": model_path.stat().st_size,
-            "train": len(train), "test": len(test)}
+            "train": len(train), "test": len(test), "thresholds": thresholds.round(2).tolist()}
     (DATA / "train_meta.json").write_text(json.dumps(meta))
     print(f"{meta['linear_ms_per_page']} ms/page, model {meta['model_bytes'] / 1e6:.1f} MB -> {model_path}")
 
