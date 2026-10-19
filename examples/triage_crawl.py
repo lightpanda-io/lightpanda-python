@@ -15,19 +15,23 @@ page that is still loading, or skip the page and say why.
 
 With --model, the browser answers the presets its local model is sure of
 (a model.lpcm exported by research/page_classifier) and asks Jev only the
-rest, so run it with and without to compare.
+rest, so run it with and without to compare. Add --local to leave Jev out
+altogether: only the presets are asked, and a page the model is unsure of is
+reported as one that would need Jev.
 
-Needs TYPESAFE_API_KEY. Run:  uv run examples/triage_crawl.py [--model PATH]
+Needs TYPESAFE_API_KEY, except with --local.
+Run:  uv run examples/triage_crawl.py [--model PATH [--local]]
 """
 
 import argparse
 import asyncio
+import os
 import statistics
 import sys
 from collections import Counter
 from time import perf_counter
 
-from lightpanda import AsyncBrowser, LightpandaError
+from lightpanda import AsyncBrowser, LightpandaError, ToolError
 
 # Pages loading at once, each in its own session of one browser.
 CRAWLERS = 6
@@ -70,7 +74,6 @@ URLS = [
 ]
 
 QUESTIONS = {
-    "rate_limited": "Does the page say we sent too many requests and should slow down or retry later?",
     "kind": {
         "question": "What kind of page is this?",
         "options": ["product", "listing", "article", "docs", "search", "other"],
@@ -82,6 +85,11 @@ ACCEPT = "/^(accept|aceptar|accepter|akzeptieren|agree|allow)/i"
 
 TTY = sys.stdout.isatty()
 jev_times = []
+local = False  # --local: ask the presets only, and never Jev
+
+
+class Unsure(Exception):
+    """The local model is unsure of the page, and only Jev could tell."""
 
 
 def paint(text, color):
@@ -91,13 +99,19 @@ def paint(text, color):
 
 async def judge(page):
     start = perf_counter()
-    verdict = await page.judge(questions=QUESTIONS)
+    try:
+        verdict = await page.judge(questions=None if local else QUESTIONS)
+    except ToolError as err:
+        # Without a key, the browser can only answer what its model is sure of.
+        if local and "TYPESAFE_API_KEY" in str(err):
+            raise Unsure from err
+        raise
     jev_times.append(perf_counter() - start)
     return verdict
 
 
 def rate_limited(verdict):
-    return verdict.answers["rate_limited"] >= 0.5
+    return verdict.is_rate_limited
 
 
 def describe(verdict):
@@ -105,7 +119,7 @@ def describe(verdict):
     if rate_limited(verdict):
         return "rate limited"
     if verdict.ok:
-        return verdict.answers["kind"]["choice"]
+        return verdict.answers["kind"]["choice"] if "kind" in verdict.answers else "ok"
     return verdict.reason.removeprefix("is_").replace("_", " ")  # is_login_wall -> login wall
 
 
@@ -162,6 +176,9 @@ async def triage(browser, slots, url):
         try:
             async with await browser.new_session() as page:
                 verdict, actions = await visit(page, url)
+        except Unsure:
+            print(f"{paint('jev? ', 'yellow')}  {url.split('://', 1)[1][:44]:<44}  {'unsure, would ask Jev':<22}")
+            return "unsure", [], perf_counter() - start
         except LightpandaError as err:
             print(f"{paint('fail ', 'red')}  {url.split('://', 1)[1][:44]:<44}  {err}")
             return "failed", [], perf_counter() - start
@@ -173,7 +190,14 @@ async def triage(browser, slots, url):
 async def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--model", help="answer the presets this local model is sure of without Jev")
-    model = parser.parse_args().model
+    parser.add_argument("--local", action="store_true", help="never ask Jev: only the presets, from --model")
+    opts = parser.parse_args()
+    if opts.local and not opts.model:
+        parser.error("--local needs --model")
+    global local
+    local, model = opts.local, opts.model
+    if local:
+        os.environ.pop("TYPESAFE_API_KEY", None)  # the browser inherits our environment
 
     slots = asyncio.Semaphore(CRAWLERS)
     start = perf_counter()
@@ -183,17 +207,19 @@ async def main():
 
     outcomes = Counter(outcome for outcome, _, _ in results)
     kept = outcomes.pop("kept", 0)
+    unsure = outcomes.pop("unsure", 0)
     acted = Counter(action for _, actions, _ in results for action in actions)
     page_time = sum(took for _, _, took in results)
 
     print()
     print(
         f"{len(results)} pages in {elapsed:.1f}s with {CRAWLERS} crawlers "
-        f"({page_time:.1f}s of page time): {kept} kept, {len(results) - kept} skipped"
+        f"({page_time:.1f}s of page time): {kept} kept, {len(results) - kept - unsure} skipped"
+        + (f", {unsure} would ask Jev" if unsure else "")
     )
     if jev_times:
         print(
-            f"Jev: {len(jev_times)} calls, median {statistics.median(jev_times):.2f}s, "
+            f"{'Local' if local else 'Jev'}: {len(jev_times)} calls, median {statistics.median(jev_times):.2f}s, "
             f"p90 {statistics.quantiles(jev_times, n=10)[-1]:.2f}s"
         )
     print("skipped: " + ", ".join(f"{reason} {n}" for reason, n in outcomes.most_common()))

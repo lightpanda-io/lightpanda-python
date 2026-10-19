@@ -264,18 +264,17 @@ LIGHTPANDA_BIN=../browser/zig-out/bin/lightpanda uv run examples/classify_pages.
 The same `judge()` call over 30 real pages, six at a time in one browser. The
 verdict decides what the crawler does next: back off when the site says we are
 going too fast, accept a cookie wall, wait for a page that is still loading,
-and then look again; or keep the page, or skip it and say why. "Too fast" is
-our own question, asked in the same call as the wall checks:
+and then look again; or keep the page, or skip it and say why. The page's
+kind is our own question, asked in the same call as the wall checks:
 
 ```python
 QUESTIONS = {
-    "rate_limited": "Does the page say we sent too many requests and should slow down or retry later?",
     "kind": {"question": "What kind of page is this?",
              "options": ["product", "listing", "article", "docs", "search", "other"]},
 }
 
 verdict = await page.judge(questions=QUESTIONS)
-if verdict.answers["rate_limited"] >= 0.5:
+if verdict.is_rate_limited:
     await asyncio.sleep(3)                         # and load it again
 elif verdict.is_consent_wall:
     found = await page.find_element(role="button", name="/^(accept|aceptar|akzeptieren)/i")
@@ -347,6 +346,14 @@ LIGHTPANDA_BIN=../browser/zig-out/bin/lightpanda uv run examples/triage_crawl.py
 ```
 
 `--model PATH` starts the browser with `--classify-model`, so the presets its
-local model is sure of are answered without Jev. The example's own questions
-(`kind`, `rate_limited`) still go to Jev, so it calls Jev on every page either
-way, with fewer questions.
+local model is sure of are answered without Jev. The example's own `kind`
+question still goes to Jev, so it calls Jev on every page either way, with
+fewer questions.
+
+`--local` leaves Jev out: it asks the presets only, without the key, so the
+browser answers a page only when its model is sure of every preset. The rest
+print as `jev?`, the pages a cascade would still send to Jev:
+
+```bash
+uv run examples/triage_crawl.py --model research/page_classifier/data/model.lpcm --local
+```
