@@ -13,9 +13,14 @@ questions. The verdict decides what happens next: back off when the site
 says we are going too fast, accept a cookie wall and look again, wait for a
 page that is still loading, or skip the page and say why.
 
-Needs TYPESAFE_API_KEY. Run:  uv run examples/triage_crawl.py
+With --model, the browser answers the presets its local model is sure of
+(a model.lpcm exported by research/page_classifier) and asks Jev only the
+rest, so run it with and without to compare.
+
+Needs TYPESAFE_API_KEY. Run:  uv run examples/triage_crawl.py [--model PATH]
 """
 
+import argparse
 import asyncio
 import statistics
 import sys
@@ -166,9 +171,13 @@ async def triage(browser, slots, url):
 
 
 async def main():
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--model", help="answer the presets this local model is sure of without Jev")
+    model = parser.parse_args().model
+
     slots = asyncio.Semaphore(CRAWLERS)
     start = perf_counter()
-    async with AsyncBrowser() as browser:
+    async with AsyncBrowser(args=["--classify-model", model] if model else []) as browser:
         results = await asyncio.gather(*(triage(browser, slots, url) for url in URLS))
     elapsed = perf_counter() - start
 

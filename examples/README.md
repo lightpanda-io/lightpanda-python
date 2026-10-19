@@ -345,3 +345,8 @@ Runs from this checkout against a local browser build, like `classify_pages.py`:
 ```bash
 LIGHTPANDA_BIN=../browser/zig-out/bin/lightpanda uv run examples/triage_crawl.py
 ```
+
+`--model PATH` starts the browser with `--classify-model`, so the presets its
+local model is sure of are answered without Jev. The example's own questions
+(`kind`, `rate_limited`) still go to Jev, so it calls Jev on every page either
+way, with fewer questions.
