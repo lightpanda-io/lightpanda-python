@@ -8,12 +8,14 @@ data/model.lpcm holds everything the browser needs to score a page as
 train.py's linear model does, and nothing it has to know beforehand except
 how features.py computes the features:
 
-    "LPCM", u32 version (1)
+    "LPCM", u32 version (2)
     u32 hash bits, u32 count + u32 char n-gram sizes
     u32 presets, each: str name, f32 threshold, u8 kind, f32 value
         kind 0: a logistic regression, value its intercept
         kind 1: a constant score (too few positives to learn), value it
     u32 matchers, each: str name, str subject, str pattern (MATCHERS)
+    u32 literal features, each: str name, u32 count + str strings: 1 when
+        the ASCII-lowercased HTML holds any of the strings (VENDORS)
     u32 tags, each: str tag (TAGS)
     u32 word buckets, then u32 bucket[] and f32 idf[], buckets increasing
     u32 char buckets, the same
@@ -51,7 +53,7 @@ def string(value: str) -> bytes:
 
 
 def model_bytes(model) -> bytes:
-    out = [b"LPCM", struct.pack("<II", 1, features.HASH_BITS)]
+    out = [b"LPCM", struct.pack("<II", 2, features.HASH_BITS)]
     out.append(struct.pack(f"<I{len(features.CHAR_SIZES)}I", len(features.CHAR_SIZES), *features.CHAR_SIZES))
     out.append(struct.pack("<I", len(PRESETS)))
     columns = len(model.words.buckets) + len(model.chars.buckets) + len(model.shape.feature_names_)
@@ -65,6 +67,9 @@ def model_bytes(model) -> bytes:
             weights[:, i] = fitted.coef_[0]
     out.append(struct.pack("<I", len(features.MATCHERS)))
     out += [string(name) + string(subject) + string(pattern) for name, subject, pattern in features.MATCHERS]
+    out.append(struct.pack("<I", len(features.VENDORS)))
+    for name, found in features.VENDORS.items():
+        out.append(string(f"vendor_{name}") + struct.pack("<I", len(found)) + b"".join(map(string, found)))
     out.append(struct.pack("<I", len(features.TAGS)))
     out += [string(tag) for tag in features.TAGS]
     for family in (model.words, model.chars):

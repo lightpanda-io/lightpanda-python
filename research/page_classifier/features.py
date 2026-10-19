@@ -38,14 +38,21 @@ PRESETS = [
 ]
 
 # Fingerprints in the HTML (script urls, globals, ids) of the vendors that
-# serve each kind of wall. Matched case-insensitively.
+# serve each kind of wall: plain lowercase ASCII strings, found in the HTML
+# with its ASCII letters lowercased. A regex would do the same, but costs the
+# browser 10ms a page over 100KB of HTML for nothing a substring can't do.
 VENDORS = {
-    "captcha": r"recaptcha|hcaptcha|challenges\.cloudflare\.com/turnstile|cf-turnstile|funcaptcha|arkoselabs|geetest|captcha-delivery",
-    "challenge": r"cf-chl|cf_chl|/cdn-cgi/challenge-platform|just a moment\.\.\.|attention required! \| cloudflare|perimeterx|px-captcha|_incapsula_|datadome|akamai bot",
-    "consent": r"onetrust|optanon|cookiebot|didomi|usercentrics|quantcast|__tcfapi|trustarc|cookielaw|sourcepoint|consentmanager|cookieyes|iubenda|klaro|osano|cmp\.",
-    "paywall": r"piano\.io|tinypass|poool|laterpay|zephr|paywall|subscriber-only|premium-content|metered",
-    "spinner": r"spinner|skeleton|shimmer|loading\.\.\.|aria-busy=\"true\"",
+    "captcha": ["recaptcha", "hcaptcha", "challenges.cloudflare.com/turnstile", "cf-turnstile", "funcaptcha",
+                "arkoselabs", "geetest", "captcha-delivery"],
+    "challenge": ["cf-chl", "cf_chl", "/cdn-cgi/challenge-platform", "just a moment...", "attention required! | cloudflare",
+                  "perimeterx", "px-captcha", "_incapsula_", "datadome", "akamai bot"],
+    "consent": ["onetrust", "optanon", "cookiebot", "didomi", "usercentrics", "quantcast", "__tcfapi", "trustarc",
+                "cookielaw", "sourcepoint", "consentmanager", "cookieyes", "iubenda", "klaro", "osano", "cmp."],
+    "paywall": ["piano.io", "tinypass", "poool", "laterpay", "zephr", "paywall", "subscriber-only", "premium-content",
+                "metered"],
+    "spinner": ["spinner", "skeleton", "shimmer", "loading...", 'aria-busy="true"'],
 }
+assert all(s.isascii() and s == s.lower() for found in VENDORS.values() for s in found)
 
 # Phrases in the visible text, all languages folded into one pattern each.
 PHRASES = {
@@ -76,7 +83,6 @@ MATCHERS = [
     ("password", "html", r"<input[^>]+type=[\"']?password"),
     ("path_login", "path", r"log-?in|sign-?in|account|auth"),
     ("path_search", "url", r"search|[?&](?:q|s|query|_nkw|st|searchTerm)="),
-    *((f"vendor_{name}", "html", pattern) for name, pattern in VENDORS.items()),
     *((f"{where}_{name}", subject, pattern) for name, pattern in PHRASES.items()
       for where, subject in (("says", "visible"), ("title", "title"))),
 ]
@@ -185,6 +191,8 @@ def structure(row: dict) -> dict[str, float]:
     lowered = html.encode().translate(LOWER)
     for tag in TAGS:
         out[f"tag_{tag}"] = min(count_tag(lowered, tag.encode()), 200) / 200
+    for name, found in VENDORS.items():
+        out[f"vendor_{name}"] = float(any(s.encode() in lowered for s in found))
     for name, subject, pattern in MATCHER_RES:
         out[name] = float(bool(pattern.search(subjects[subject])))
     return out
