@@ -17,6 +17,8 @@ verdict and the cascade.
   preset, and its verdict agreement on those. Jev answers the rest. Sure
   means far from that preset's threshold: --sure is the band at a 0.5
   threshold (below 0.1 or above 0.9), scaled to each side of the others.
+  --sweep prints the cascade for a range of bands, from Jev on every page
+  (0) to the linear model on every page (0.5), to pick one.
 
 The linear model fires each preset at its own threshold, picked by train.py
 and read from data/train_meta.json.
@@ -53,11 +55,19 @@ def fmt(value):
     return "  -  " if np.isnan(value) else f"{value:.2f} "
 
 
+def sure_of(scores, thresholds, sure):
+    """Pages whose every preset scores far from its threshold: within the
+    outer `sure / 0.5` of the way to 0 or to 1."""
+    band = sure / 0.5
+    return ((scores < thresholds * band) | (scores > 1 - (1 - thresholds) * band)).all(axis=1)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--predictions", type=Path, default=DATA / "predictions.jsonl")
     parser.add_argument("--gold", type=Path, default=DATA / "gold.jsonl")
     parser.add_argument("--sure", type=float, default=0.1, help="cascade: sure below this or above 1 minus it")
+    parser.add_argument("--sweep", action="store_true", help="print the cascade for a range of --sure bands")
     args = parser.parse_args()
 
     rows = [json.loads(line) for line in args.predictions.open()]
@@ -86,8 +96,7 @@ def main():
     for name, guess in (("jev#1", first), ("rules", rules), ("linear", linear)):
         print(f"  {name:<7}{(~guess[whole].any(axis=1) == ok).mean():.1%}")
 
-    band = args.sure / 0.5
-    sure = ((linear_scores[whole] < thresholds * band) | (linear_scores[whole] > 1 - (1 - thresholds) * band)).all(axis=1)
+    sure = sure_of(linear_scores[whole], thresholds, args.sure)
     if sure.any():
         agree = (~linear[whole][sure].any(axis=1) == ok[sure]).mean()
         print(f"\ncascade: linear is sure on {sure.mean():.1%} of those pages, agreeing with Jev on {agree:.1%} of them;"
@@ -98,6 +107,7 @@ def main():
     if meta:
         print(f"\nlinear: {meta['linear_ms_per_page']} ms/page, {meta['model_bytes'] / 1e6:.1f} MB, trained on {meta['train']} pages")
 
+    picked, truth_ok = [], None
     if args.gold.exists():
         gold = {g["url"]: g["labels"] for g in map(json.loads, args.gold.open())}
         picked = [i for i, r in enumerate(rows) if r["url"] in gold]
@@ -105,9 +115,27 @@ def main():
             # A preset added after the page was checked counts as Jev voted.
             truth = np.array([[gold[rows[i]["url"]][p] if p in gold[rows[i]["url"]] else jev[i, j]
                                for j, p in enumerate(PRESETS)] for i in picked])
+            truth_ok = ~truth.any(axis=1)
             print(f"\ngold: {len(picked)} hand-checked held-out pages, verdict accuracy")
             for name, guess in (("jev", jev), ("rules", rules), ("linear", linear)):
-                print(f"  {name:<7}{(~guess[picked].any(axis=1) == ~truth.any(axis=1)).mean():.1%}")
+                print(f"  {name:<7}{(~guess[picked].any(axis=1) == truth_ok).mean():.1%}")
+
+    if args.sweep:
+        # The cascade's verdict: the linear model's where it is sure, Jev's elsewhere.
+        jev_ok, linear_ok = ~jev.any(axis=1), ~linear.any(axis=1)
+        print(f"\ncascade sweep, on the {whole.sum()} pages with every preset decided"
+              + (f" (gold: the {len(picked)} hand-checked ones)" if picked else ""))
+        print(f"{'--sure':>8}  {'local':>6}  {'to jev':>6}  {'agree when sure':>15}  {'agree overall':>13}" + ("  gold" if picked else ""))
+        for band in (0, 0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5):
+            sure = sure_of(linear_scores, thresholds, band)
+            cascade_ok = np.where(sure, linear_ok, jev_ok)
+            s = sure[whole]
+            when_sure = f"{(linear_ok[whole][s] == jev_ok[whole][s]).mean():.1%}" if s.any() else "-"
+            line = (f"{band:>8.2f}  {s.mean():>6.1%}  {(~s).sum():>6}  {when_sure:>15}  "
+                    f"{(cascade_ok[whole] == jev_ok[whole]).mean():>13.1%}")
+            if picked:
+                line += f"  {(cascade_ok[picked] == truth_ok).mean():.1%}"
+            print(line)
 
 
 if __name__ == "__main__":
