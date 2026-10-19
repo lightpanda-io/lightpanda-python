@@ -19,7 +19,6 @@ into one of 2**HASH_BITS buckets, so the model needs no vocabulary.
 
 import re
 from collections import Counter
-from urllib.parse import urlsplit
 
 from sklearn.utils import murmurhash3_32
 
@@ -47,7 +46,6 @@ VENDORS = {
     "paywall": r"piano\.io|tinypass|poool|laterpay|zephr|paywall|subscriber-only|premium-content|metered",
     "spinner": r"spinner|skeleton|shimmer|loading\.\.\.|aria-busy=\"true\"",
 }
-VENDOR_RES = {name: re.compile(pattern, re.IGNORECASE) for name, pattern in VENDORS.items()}
 
 # Phrases in the visible text, all languages folded into one pattern each.
 PHRASES = {
@@ -59,21 +57,60 @@ PHRASES = {
     "javascript": r"enable javascript|javascript is (?:disabled|required)|browser is not supported|unsupported browser|update your browser|activez javascript|javascript aktivieren",
     "robot": r"are you a robot|not a robot|verify you are human|unusual traffic|access denied|checking your browser|too many requests",
     "loading": r"loading|chargement|wird geladen|cargando|caricamento",
-    "adult": r"\b18\+|over 18|18 years|of legal age|date of birth|enter your birth|i am 18|adults? only|mayor de edad|maggiorenne|volljährig|majeur",
+    "adult": r"(?<![0-9])18\+|over 18|18 years|of legal age|date of birth|enter your birth|i am 18|adults? only|mayor de edad|maggiorenne|volljährig|majeur",
     "region": r"not available in your (?:country|region|location)|unavailable in your (?:country|region)|your (?:country|region|location) is not (?:supported|allowed)|geo-?(?:blocked|restricted)|restricted (?:territory|jurisdiction)|no disponible en tu (?:país|región)",
     "rate": r"too many requests|rate limit|slow down|try again (?:later|in a (?:few|minute))|request limit|not able to serve your requests",
 }
-PHRASE_RES = {name: re.compile(pattern, re.IGNORECASE) for name, pattern in PHRASES.items()}
 
-PASSWORD = re.compile(r"<input[^>]+type=[\"']?password", re.IGNORECASE)
-TAGS = {tag: re.compile(rf"<{tag}\b", re.IGNORECASE) for tag in ("form", "input", "iframe", "script", "a", "img", "dialog")}
+# Every regex feature: its name, the text it searches and its pattern. The
+# browser runs the same patterns with PCRE2 (export.py ships them in the
+# model), both sides case-insensitive with Unicode case folding, so they use
+# nothing whose meaning differs between Python's re and PCRE2: no \b, \w,
+# \d or \s, which are ASCII-only there. The texts:
+#   html     the page's HTML, as collect.py stores it
+#   visible  the title, a newline, then the semantic tree
+#   title    the title
+#   path     the url's path
+#   url      the whole url
+MATCHERS = [
+    ("password", "html", r"<input[^>]+type=[\"']?password"),
+    ("path_login", "path", r"log-?in|sign-?in|account|auth"),
+    ("path_search", "url", r"search|[?&](?:q|s|query|_nkw|st|searchTerm)="),
+    *((f"vendor_{name}", "html", pattern) for name, pattern in VENDORS.items()),
+    *((f"{where}_{name}", subject, pattern) for name, pattern in PHRASES.items()
+      for where, subject in (("says", "visible"), ("title", "title"))),
+]
+MATCHER_RES = [(name, subject, re.compile(pattern, re.IGNORECASE)) for name, subject, pattern in MATCHERS]
+
+# Tags counted in the HTML: `<` and the name in any ASCII case, then a byte
+# that cannot continue a name (not an ASCII letter, digit or `_`).
+TAGS = ["form", "input", "iframe", "script", "a", "img", "dialog"]
+NAME_BYTES = frozenset(b"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_")
+
+
+def split_url(url: str) -> tuple[str, str, str]:
+    """The host, path and query of an http(s) url, as urlsplit cuts them."""
+    rest = url.split("://", 1)[1] if "://" in url else url
+    rest, _, query = rest.split("#", 1)[0].partition("?")
+    host, slash, path = rest.partition("/")
+    return host, slash + path, query
 
 
 def text(row: dict) -> str:
     """The page as Jev sees it, flattened for an n-gram vectorizer."""
-    parts = urlsplit(row.get("url") or "")
-    path = re.sub(r"[/_.?=&-]+", " ", parts.path + " " + parts.query)
-    return f"url {parts.netloc} {path}\nstatus {row.get('status')}\ntitle {row.get('title') or ''}\n{row.get('tree') or ''}"
+    host, path, query = split_url(row.get("url") or "")
+    path = re.sub(r"[/_.?=&-]+", " ", path + " " + query)
+    return f"url {host} {path}\nstatus {row.get('status') or 0}\ntitle {row.get('title') or ''}\n{row.get('tree') or ''}"
+
+
+def count_tag(html: bytes, tag: bytes) -> int:
+    """How often `<tag` opens in the HTML (html already ASCII-lowercased)."""
+    found, at = 0, html.find(b"<" + tag)
+    while at >= 0:
+        end = at + 1 + len(tag)
+        found += end == len(html) or html[end] not in NAME_BYTES
+        at = html.find(b"<" + tag, end)
+    return found
 
 
 HASH_BITS = 20
@@ -125,8 +162,9 @@ def structure(row: dict) -> dict[str, float]:
     tree = row.get("tree") or ""
     title = row.get("title") or ""
     status = row.get("status") or 0
-    lines = tree.splitlines()
-    visible = f"{title}\n{tree}"
+    lines = tree.split("\n") if tree else []
+    subjects = {"html": html, "visible": f"{title}\n{tree}", "title": title,
+                "path": split_url(row.get("url") or "")[1], "url": row.get("url") or ""}
     out = {
         "status_2xx": float(200 <= status < 300),
         "status_3xx": float(300 <= status < 400),
@@ -137,23 +175,18 @@ def structure(row: dict) -> dict[str, float]:
         "status_5xx": float(status >= 500),
         "status_none": float(not status),
         "tree_lines": min(len(lines), 2000) / 2000,
-        "tree_bytes": min(len(tree), 8192) / 8192,
+        "tree_bytes": min(len(tree.encode()), 8192) / 8192,
         "tree_tiny": float(len(lines) < 15),
-        "html_bytes": min(len(html), 262144) / 262144,
+        "html_bytes": min(len(html.encode()), 262144) / 262144,
         "links": min(sum("link" in line for line in lines), 300) / 300,
         "textboxes": min(sum("textbox" in line for line in lines), 20) / 20,
         "buttons": min(sum("button" in line for line in lines), 50) / 50,
-        "password": float(bool(PASSWORD.search(html))),
-        "path_login": float(bool(re.search(r"log-?in|sign-?in|account|auth", urlsplit(row.get("url") or "").path, re.IGNORECASE))),
-        "path_search": float(bool(re.search(r"search|[?&](q|s|query|_nkw|st|searchTerm)=", row.get("url") or "", re.IGNORECASE))),
     }
-    for tag, pattern in TAGS.items():
-        out[f"tag_{tag}"] = min(len(pattern.findall(html)), 200) / 200
-    for name, pattern in VENDOR_RES.items():
-        out[f"vendor_{name}"] = float(bool(pattern.search(html)))
-    for name, pattern in PHRASE_RES.items():
-        out[f"says_{name}"] = float(bool(pattern.search(visible)))
-        out[f"title_{name}"] = float(bool(pattern.search(title)))
+    lowered = html.encode().translate(LOWER)
+    for tag in TAGS:
+        out[f"tag_{tag}"] = min(count_tag(lowered, tag.encode()), 200) / 200
+    for name, subject, pattern in MATCHER_RES:
+        out[name] = float(bool(pattern.search(subjects[subject])))
     return out
 
 
