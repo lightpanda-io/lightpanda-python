@@ -19,7 +19,7 @@ knows about the page, so each page and preset gets a suspicion score from:
 Writes data/review.jsonl, most suspicious first, one line per page with the
 presets in doubt; check the top of it before the rest of the gold set.
 
-Run:  uv run research/page_classifier/review.py
+Run:  uv run research/page_classifier/review.py [--presets is_paywall is_login_wall]
 """
 
 import argparse
@@ -65,6 +65,8 @@ def main():
     parser.add_argument("--gold", type=Path, default=DATA / "gold.jsonl")
     parser.add_argument("--confidence", type=float, default=0.7)
     parser.add_argument("--folds", type=int, default=5)
+    parser.add_argument("--presets", nargs="+", choices=PRESETS, default=PRESETS,
+                        help="only doubt these presets")
     args = parser.parse_args()
 
     rows = load(args.pages, args.confidence, args.gold)
@@ -86,6 +88,8 @@ def main():
     for row, scores, rules in zip(rows, oof, rules):
         doubts = []
         for i, preset in enumerate(PRESETS):
+            if preset not in args.presets:
+                continue
             label = row["label"][i]
             answers = [s for s in (c.get(preset) for c in row["jev"]) if s is not None]
             mean = float(np.mean(answers)) if answers else None

@@ -174,16 +174,51 @@ it is sure of: it is confidently wrong on a few. With linear, the ensemble
 answers about 10 points more pages than linear alone at 99% agreement, as
 it did on the first dataset, but none more at 99.5%.
 
+### Hand-checked paywalls and login walls
+
+`review.py --presets is_paywall is_login_wall` ranked the pages whose wall
+labels were most in doubt, and the top 300 (at most three per site) were
+checked by reading each tree. 256 went into `gold.jsonl` (marked
+`"by": "claude"`, each with a note on why) with only those two presets,
+so the other presets keep Jev's vote, and 41 were left out because the tree
+does not show which it is. Most of the 8 KB cap cases are of that kind: the
+article runs into the cap before any wall would appear.
+
+The rule followed: a subscription prompt is a paywall, and it is not also a
+login wall because it offers subscribers a sign-in link; a login wall is a
+page whose content is replaced by a sign-in form or prompt, a sign-in page
+included. Jev, asked as classify asks it, calls most subscription walls
+login walls too (about 0.8), and says the opposite when the question is
+reworded (about 0.2). Of the 256 pages, 58 overturn a Jev vote (50 of them
+subscription walls Jev called login walls) and 197 settle undecided labels.
+Pay-or-consent cookie dialogs, empty trees and bot checks count as neither.
+
+On the hand-checked pages, out of fold:
+
+| | login wall accuracy | login wall F1 | paywall accuracy | paywall F1 |
+|---|---|---|---|---|
+| linear, Jev's labels | 88.9% | 0.77 | 76.7% | 0.53 |
+| linear, hand labels | **92.7%** | **0.83** | **78.2%** | **0.57** |
+
+Login walls improve: their F1 against the training labels goes from 0.76 to
+0.86, so the labels are now much more consistent. Paywalls barely move: the
+model still misses a paywall that shows the article's lead paragraph before
+the prompt. On the original pages nothing measurable changes (local at
+99.5% / 99%: 69.1% / 79.6%, against 68.9% / 80.2%; gold accuracy on the
+first 416 hand-checked pages 87.3% against 87.5%), and agreement with Jev
+on login walls drops a little, as it should. `data/model.lpcm` holds this
+model.
+
 ## Recommendation
 
 Keep the linear model in the browser and grow its data instead of adding a
 transformer: 3,000 Jev-labelled pages, picked by the model itself, gained
-as much as the fine-tuned base model did, at no cost per page. Paywalls
-(0.60) and login walls (0.63) are still the weakest presets, and the
-second round moved them less than the first moved loading and consent
-walls: more rounds still help, but hand-checking those two presets'
-doubtful labels (`review.py`, `label.py`) may now pay off more, since much
-of what is left is Jev's own disagreement about what counts as a wall. The fine-tuned base model stays the option for a
+as much as the fine-tuned base model did, at no cost per page. Hand labels
+fixed most of what was wrong with login walls, which was Jev's own
+disagreement about what counts as one. Paywalls are now the weakest
+preset: the next step there is examples of articles that show their lead
+before the prompt, from more publishers, rather than more labels on the
+same sites. The fine-tuned base model stays the option for a
 second stage if the cascade must answer more pages locally: retrained on the
 new data, it still adds about 10 points of pages at 99% agreement (80% →
 88–90%), and nothing at 99.5%.
@@ -197,6 +232,7 @@ uv run research/page_classifier/folds.py
 uv run research/page_classifier/crossval.py && uv run research/page_classifier/crossval.py --soft
 uv run research/page_classifier/train.py && uv run research/page_classifier/export.py
 # a further round: urls --skip 7000 --seed 3, load, pick --presets is_paywall is_login_wall ..., label
+uv run research/page_classifier/review.py --presets is_paywall is_login_wall   # then label.py, into gold.jsonl
 # on a CUDA machine, with data/folds.jsonl and transformer.py copied over:
 uv run transformer.py embed
 uv run transformer.py cv --variant small        # also small-long, base
