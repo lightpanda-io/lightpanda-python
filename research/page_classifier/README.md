@@ -105,9 +105,11 @@ Running the transformer only where linear is unsure keeps most of the gain:
 
 `mine.py` loaded 13,400 more candidate pages (Tranco homepages past the
 first 3,000, nonsense searches, members-only paths, articles from the
-paywalled publishers) without asking Jev: classify with no questions and
-`includeInput` returns what Jev would be sent. The linear model scored
-them, and Jev was asked only about 1,500: the top 112 of each rare preset
+paywalled publishers) and kept what classify sends Jev (`includeInput`).
+That was meant to be free, but classify reads an empty questions object as
+every preset, so each load cost one Jev call: about 21,000 over the two
+rounds, which a Jev-free way to get the input would save. The linear model
+scored them, and Jev was asked properly (two calls) only about 1,500: the top 112 of each rare preset
 and the ones the model was least sure of. That added 1,500 pages and
 multiplied the rare positives: empty catalog 20 → 115, login wall 66 → 186,
 paywall 90 → 157, loading 16 → 53, rate limited 3 → 49, unsupported

@@ -10,14 +10,16 @@
 collect.py asks Jev about every page it loads, and most pages are ordinary
 content: the rare presets (paywalls, login walls, loading shells, empty
 searches, unsupported browsers, rate limits) stay a few dozen examples each.
-This loads many more pages but only asks Jev about the ones worth it:
+This loads many more pages but labels only the ones worth it:
 
   urls    write data/candidates.tsv: more Tranco homepages, a nonsense
           search and a members-only path on some of them, and article links
           from the paywalled news sites (articles.py's)
-  load    load each candidate and keep what classify would send Jev, by
-          asking classify no questions with `includeInput`: no Jev call,
-          no key needed. -> data/candidates.jsonl
+  load    load each candidate and keep what classify sends Jev
+          (`includeInput`) -> data/candidates.jsonl. This is NOT free: an
+          empty questions object means every preset to classify, so each
+          page costs one Jev call (its answers are kept as `jev_load`).
+          Getting the input without Jev needs a browser change
   pick    train the linear model on the labelled pages and score the
           candidates; take the top of each rare preset, then the pages the
           model is least sure of, at most --per-site per site, up to
@@ -137,7 +139,7 @@ async def load_one(browser, slots, out, source, url, timeout, counts):
                 result = await asyncio.wait_for(visit(), timeout / 1000 * 2)
             local = result["input"]
             row = {"url": local["url"] or url, "title": local["title"] or None, "status": local["status"] or None,
-                   "tree": local["tree"], "html": local["html"], "input": "classify"}
+                   "tree": local["tree"], "html": local["html"], "input": "classify", "jev_load": result["answers"]}
             counts["ok"] += 1
         except (LightpandaError, asyncio.TimeoutError, KeyError, TypeError) as err:
             row = {"error": str(err) or type(err).__name__}
@@ -257,7 +259,7 @@ def judge(key: str, row: dict) -> dict:
         start = perf_counter()
         scores.append(ask(key, row, keys_in_order))
         seconds.append(round(perf_counter() - start, 3))
-    out = {k: v for k, v in row.items() if not k.startswith(("picked", "_"))}
+    out = {k: v for k, v in row.items() if not k.startswith(("picked", "_", "jev_load"))}
     return out | {"jev": scores, "jev_orders": orders, "jev_seconds": seconds, "jev_direct": True}
 
 
