@@ -102,7 +102,7 @@ def cmd_urls(args):
     rng = random.Random(args.seed)
     known = tranco(3000)  # seeds.py's crawl
     rows = []
-    for domain in tranco(3000 + args.domains)[3000:]:
+    for domain in tranco(3000 + args.skip + args.domains)[3000 + args.skip:]:
         rows.append(("mine-tranco", f"https://{domain}/"))
         if rng.random() < args.search:
             rows.append(("mine-search", f"https://{domain}{rng.choice(SEARCH_PATHS).format(q=NONSENSE)}"))
@@ -200,8 +200,8 @@ def cmd_pick(args):
         per_site[s] += 1
         return True
 
-    share = int(args.budget * args.rare / len(RARE))
-    for preset in RARE:
+    share = int(args.budget * args.rare / len(args.presets))
+    for preset in args.presets:
         j = PRESETS.index(preset)
         taken = 0
         for i in np.argsort(-scores[:, j]):
@@ -289,6 +289,7 @@ def main():
     parser.add_argument("command", choices=["urls", "load", "pick", "label"])
     parser.add_argument("--urls", type=Path, default=DATA / "candidates.tsv")
     parser.add_argument("--domains", type=int, default=7000, help="urls: Tranco domains past seeds.py's 3000")
+    parser.add_argument("--skip", type=int, default=0, help="urls: Tranco domains to skip first, those an earlier round took")
     parser.add_argument("--search", type=float, default=0.2, help="urls: share of new domains also searched for nonsense")
     parser.add_argument("--members", type=float, default=0.2, help="urls: share of new domains also given a members' path")
     parser.add_argument("--known", type=int, default=1000, help="urls: crawled domains also searched and given a members' path")
@@ -299,6 +300,7 @@ def main():
     parser.add_argument("--timeout", type=int, default=15000, help="load: page load timeout, ms")
     parser.add_argument("--budget", type=int, default=1500, help="pick: pages to ask Jev about")
     parser.add_argument("--rare", type=float, default=0.6, help="pick: share of the budget for the rare presets")
+    parser.add_argument("--presets", nargs="+", default=RARE, choices=PRESETS, help="pick: the rare presets to look for")
     parser.add_argument("--floor", type=float, default=0.2, help="pick: lowest score a rare pick may have")
     parser.add_argument("--workers", type=int, default=8, help="label: calls in flight")
     parser.add_argument("--limit", type=int, default=0)

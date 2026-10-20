@@ -120,35 +120,48 @@ folds, `compare.py --skip-source mine-`):
 |---|---|---|---|---|
 | linear, first dataset | 95.4% | 84.1% | 51.7% | 69.4% |
 | linear, + mined pages | 94.9% | 84.6% | 60.9% | 78.5% |
-| linear, + mined pages, soft labels | **96.0%** | 84.6% | **67.5%** | 77.2% |
+| linear, + mined pages, soft labels | 96.0% | 84.6% | 67.5% | 77.2% |
+| linear, + second round | **96.8%** | **87.5%** | **68.9%** | **80.2%** |
+| linear, + second round, soft labels | 96.0% | 85.8% | 67.0% | 75.0% |
 | ensemble with ft-base, first dataset | 95.6% | 87.5% | 69.6% | 81.1% |
 
 F1 against Jev per preset, same pages:
 
-| preset | first dataset | + mined | + mined, soft |
-|---|---|---|---|
-| login wall | 0.56 | 0.60 | 0.65 |
-| paywall | 0.57 | 0.55 | 0.58 |
-| loading | 0.53 | 0.65 | 0.69 |
-| age gate | 0.76 | 0.76 | 0.85 |
-| region blocked | 0.86 | 0.91 | 0.91 |
-| empty catalog | 0.68 | 0.70 | 0.68 |
-| consent wall | 0.88 | 0.91 | 0.91 |
-| blocked / captcha | 0.95 / 0.93 | 0.97 / 0.97 | 0.97 / 0.97 |
+| preset | first dataset | + mined | + mined, soft | + second round |
+|---|---|---|---|---|
+| login wall | 0.56 | 0.60 | 0.65 | 0.63 |
+| paywall | 0.57 | 0.55 | 0.58 | 0.60 |
+| loading | 0.53 | 0.65 | 0.69 | 0.73 |
+| age gate | 0.76 | 0.76 | 0.85 | 0.82 |
+| region blocked | 0.86 | 0.91 | 0.91 | 0.91 |
+| empty catalog | 0.68 | 0.70 | 0.68 | 0.72 |
+| consent wall | 0.88 | 0.91 | 0.91 | 0.95 |
+| blocked / captcha | 0.95 / 0.93 | 0.97 / 0.97 | 0.97 / 0.97 | 0.97 / 0.96 |
 
 (Unsupported browser and rate limited have 8 and 10 positives among these
-pages, too few to read anything into.) The linear model with the mined pages
-and soft labels is about as good as the first dataset's linear + transformer
-ensemble, at 1.8 ms; it is what `data/model.lpcm` now holds.
+pages, too few to read anything into.)
+
+A second round of `mine.py` loaded 17,000 more candidates (the next 7,000
+Tranco domains, 40 articles per paywalled site) and had the retrained model
+pick 1,500 more, aimed at paywalls, login walls and unsupported browsers:
+paywall positives 157 → 259, login wall 186 → 313, unsupported browser
+22 → 56, 6,394 pages in all. With that much data the soft labels stopped
+helping: they won while the rare presets had a few dozen examples, and now
+cost agreement and gold accuracy. The plain linear model matches the first
+dataset's linear + transformer ensemble (87.5% on the hand-checked pages,
+80% answered locally at 99% agreement) at 1.8 ms; it is what
+`data/model.lpcm` now holds.
 
 ## Recommendation
 
 Keep the linear model in the browser and grow its data instead of adding a
-transformer: 1,500 Jev-labelled pages, picked by the model itself, gained
-more than the fine-tuned base model did, at no cost per page. Further
-rounds of `mine.py` (new candidates, picked by the retrained model) should
-keep paying off on the presets still weak: paywalls, login walls and
-unsupported browsers. The fine-tuned base model stays the option for a
+transformer: 3,000 Jev-labelled pages, picked by the model itself, gained
+as much as the fine-tuned base model did, at no cost per page. Paywalls
+(0.60) and login walls (0.63) are still the weakest presets, and the
+second round moved them less than the first moved loading and consent
+walls: more rounds still help, but hand-checking those two presets'
+doubtful labels (`review.py`, `label.py`) may now pay off more, since much
+of what is left is Jev's own disagreement about what counts as a wall. The fine-tuned base model stays the option for a
 second stage if the cascade must answer more pages locally.
 
 ## Reproduce
@@ -158,7 +171,8 @@ uv run research/page_classifier/mine.py urls && uv run research/page_classifier/
 uv run research/page_classifier/mine.py pick --budget 1500 && uv run research/page_classifier/mine.py label  # needs TYPESAFE_API_KEY
 uv run research/page_classifier/folds.py
 uv run research/page_classifier/crossval.py && uv run research/page_classifier/crossval.py --soft
-uv run research/page_classifier/train.py --soft && uv run research/page_classifier/export.py
+uv run research/page_classifier/train.py && uv run research/page_classifier/export.py
+# a further round: urls --skip 7000 --seed 3, load, pick --presets is_paywall is_login_wall ..., label
 # on a CUDA machine, with data/folds.jsonl and transformer.py copied over:
 uv run transformer.py embed
 uv run transformer.py cv --variant small        # also small-long, base
