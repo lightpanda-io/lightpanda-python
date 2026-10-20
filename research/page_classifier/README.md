@@ -152,6 +152,26 @@ dataset's linear + transformer ensemble (87.5% on the hand-checked pages,
 80% answered locally at 99% agreement) at 1.8 ms; it is what
 `data/model.lpcm` now holds.
 
+### The transformer, retrained on the new data
+
+e5-base fine-tuned again on the 6,394 pages, same recipe, same folds as
+linear (74 minutes on the Quadro RTX 5000). On the original pages:
+
+| | verdict vs Jev | gold accuracy | local at 99.5% | local at 99% | local at 98% |
+|---|---|---|---|---|---|
+| linear | 96.8% | **87.5%** | **68.9%** | 80.2% | 93.4% |
+| ft-base | 96.9% | 86.6% | — | — | 92.6% |
+| ensemble | **97.2%** | 87.0% | 63.0% | **89.8%** | **97.2%** |
+| staged: linear 0.05, then ensemble 0.15 | | | | 88.0% (transformer on 37%) | |
+
+The data fixed the transformer's rare presets (loading 0.19 → 0.76, age
+gate 0.77 → 0.89, region blocked 0.91 → 0.97, F1 against Jev), except
+paywalls (0.53, linear 0.60) and empty catalogs (0.63, linear 0.72), where
+keywords still win. By itself it never reaches 99% agreement on the pages
+it is sure of: it is confidently wrong on a few. With linear, the ensemble
+answers about 10 points more pages than linear alone at 99% agreement, as
+it did on the first dataset, but none more at 99.5%.
+
 ## Recommendation
 
 Keep the linear model in the browser and grow its data instead of adding a
@@ -162,7 +182,9 @@ second round moved them less than the first moved loading and consent
 walls: more rounds still help, but hand-checking those two presets'
 doubtful labels (`review.py`, `label.py`) may now pay off more, since much
 of what is left is Jev's own disagreement about what counts as a wall. The fine-tuned base model stays the option for a
-second stage if the cascade must answer more pages locally.
+second stage if the cascade must answer more pages locally: retrained on the
+new data, it still adds about 10 points of pages at 99% agreement (80% →
+88–90%), and nothing at 99.5%.
 
 ## Reproduce
 
