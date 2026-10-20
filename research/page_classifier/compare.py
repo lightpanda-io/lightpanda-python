@@ -44,6 +44,7 @@ PRESETS = [
 ]
 ORDER = ["rules", "linear", "frozen", "ft-small", "ft-small-long", "ft-base", "ensemble"]
 BANDS = [0.02, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4]
+TARGETS = [0.995, 0.99, 0.98]
 
 
 def f1(truth, guess) -> float:
@@ -85,10 +86,16 @@ def main():
     parser.add_argument("--folds", type=Path, default=DATA / "folds.jsonl")
     parser.add_argument("--gold", type=Path, default=DATA / "gold.jsonl")
     parser.add_argument("--sure", type=float, default=0.1)
+    parser.add_argument("--skip-source", help="score only pages whose source does not start with this, e.g. mine- for the "
+                        "pages mine.py picked as hard (they still train the other folds)")
+    parser.add_argument("--oof", type=Path, default=DATA / "oof")
+    parser.add_argument("--out", default="comparison", help="name of the .txt and .png written under data/")
     args = parser.parse_args()
 
     pages = [json.loads(line) for line in args.folds.open()]
     urls = [p["url"] for p in pages]
+    keep = np.array([not (args.skip_source and p["source"].startswith(args.skip_source)) for p in pages])
+    pages = [p for p, k in zip(pages, keep) if k]
     vote = np.array([[np.nan if v is None else v for v in p["vote"]] for p in pages], dtype=float)
     decided = ~np.isnan(vote)
     whole = decided.all(axis=1)
@@ -96,12 +103,13 @@ def main():
     ok = ~jev.any(axis=1)
 
     scores = {}
-    extra = sorted(p.stem for p in (DATA / "oof").glob("*.jsonl") if p.stem not in ORDER)
+    extra = sorted(p.stem for p in args.oof.glob("*.jsonl") if p.stem not in ORDER)
     names_on_disk = [n for n in ORDER if n != "ensemble"] + extra
     for name in names_on_disk:
-        path = DATA / "oof" / f"{name}.jsonl"
+        path = args.oof / f"{name}.jsonl"
         if path.exists():
-            scores[name] = read_scores(path, urls)
+            scores[name] = read_scores(path, urls)[keep]
+    urls = [p["url"] for p in pages]
     thresholds = {name: (np.full(len(PRESETS), 0.5) if name == "rules" else thresholds_for(s, vote))
                   for name, s in scores.items()}
     calibrated = {name: calibrate(s, thresholds[name]) for name, s in scores.items() if name != "rules"}
@@ -162,10 +170,23 @@ def main():
             cells.append(f"{sure.mean():>7.1%} / {agree:>6.1%}{mark}")
         print(f"{band:>8.2f}" + "".join(f"{c:>17}" for c in cells))
 
-    print(f"\nmost pages answered locally at 99% agreement or better (the band that gives it)")
+    # The summary searches a fine grid of bands: on the coarse one above, a
+    # model can miss a target agreement by a hair and lose 10 points of pages.
+    fine = np.round(np.arange(0.005, 0.4, 0.005), 3)
+    print(f"\nmost pages answered locally at an agreement or better (the band that gives it)")
+    print(f"  {'':<20}" + "".join(f"{t:>24.1%}" for t in TARGETS))
     for n in cascaded:
-        best = max(((share, band) for band, (share, agree) in zip(BANDS, curves[n]) if agree >= 0.99), default=None)
-        print(f"  {n:<20}" + (f"{best[0]:>7.1%}  (--sure {best[1]})" if best else "      -"))
+        c, guess_ok = calibrated[n][whole], ~fired[n][whole].any(axis=1)
+        points = []
+        for band in fine:
+            sure = ((c < band) | (c > 1 - band)).all(axis=1)
+            if sure.any():
+                points.append((sure.mean(), (guess_ok[sure] == ok[whole][sure]).mean(), band))
+        cells = []
+        for target in TARGETS:
+            best = max(((share, band) for share, agree, band in points if agree >= target), default=None)
+            cells.append(f"{best[0]:.1%} (--sure {best[1]:g})" if best else "-")
+        print(f"  {n:<20}" + "".join(f"{cell:>24}" for cell in cells))
 
     if "linear" in calibrated and "ensemble" in calibrated:
         print("\nstaged: linear first, the ensemble (so the transformer) only where linear is unsure, Jev for the rest")
@@ -201,12 +222,13 @@ def main():
     ax.grid(alpha=0.3)
     ax.legend()
     fig.tight_layout()
-    fig.savefig(DATA / "comparison.png", dpi=150)
+    fig.savefig(DATA / f"{args.out}.png", dpi=150)
+    return args.out
 
 
 if __name__ == "__main__":
     buffer = io.StringIO()
     with redirect_stdout(buffer):
-        main()
+        out = main()
     print(buffer.getvalue(), end="")
-    (DATA / "comparison.txt").write_text(buffer.getvalue())
+    (DATA / f"{out}.txt").write_text(buffer.getvalue())

@@ -153,8 +153,11 @@ class HashedTfidf:
 class Linear:
     """One logistic regression per preset over n-grams plus structure."""
 
-    def __init__(self, c: float = 4.0):
+    def __init__(self, c: float = 4.0, soft: bool = False):
         self.c = c
+        # Learn the undecided labels too, at Jev's mean score: the page counts
+        # as a positive with that weight and as a negative with the rest.
+        self.soft = soft
         self.words = HashedTfidf(max_features=100_000)
         self.chars = HashedTfidf(max_features=200_000)
         self.shape = DictVectorizer()
@@ -179,7 +182,14 @@ class Linear:
                 self.models[preset] = float(y.mean()) if len(y) else 0.0  # too rare to learn yet
                 continue
             model = LogisticRegression(C=self.c, max_iter=2000, class_weight="balanced")
-            model.fit(x[decided], y)
+            weight = np.ones(len(y))
+            if self.soft:
+                soft = [(j, np.mean(s)) for j, r in enumerate(rows) if r["label"][i] is None
+                        for s in [[c[i] for c in r["jev_calls"] if c[i] is not None]] if s]
+                decided += [j for j, _ in soft] * 2
+                y = np.concatenate([y, np.ones(len(soft)), np.zeros(len(soft))])
+                weight = np.concatenate([weight, [m for _, m in soft], [1 - m for _, m in soft]])
+            model.fit(x[decided], y, sample_weight=weight)
             self.models[preset] = model
         return self
 
@@ -210,12 +220,12 @@ def structure(row: dict) -> dict:
     return row["_structure"]
 
 
-def best_thresholds(rows: list[dict], folds: int) -> np.ndarray:
+def best_thresholds(rows: list[dict], folds: int, soft: bool = False) -> np.ndarray:
     """Each preset's F1-best threshold on out-of-fold scores, grouped by site."""
     oof = np.zeros((len(rows), len(PRESETS)))
     groups = [site(r) for r in rows]
     for train_idx, test_idx in GroupKFold(n_splits=folds).split(rows, groups=groups):
-        oof[test_idx] = Linear().fit([rows[i] for i in train_idx]).predict([rows[i] for i in test_idx])
+        oof[test_idx] = Linear(soft=soft).fit([rows[i] for i in train_idx]).predict([rows[i] for i in test_idx])
     grid = np.linspace(0.02, 0.98, 49)
     out = np.full(len(PRESETS), 0.5)
     for i in range(len(PRESETS)):
@@ -236,6 +246,7 @@ def main():
     parser.add_argument("--test", type=float, default=0.25, help="share of sites held out")
     parser.add_argument("--folds", type=int, default=3, help="folds for picking the thresholds")
     parser.add_argument("--seed", type=int, default=1)
+    parser.add_argument("--soft", action="store_true", help="also learn the undecided labels at Jev's mean score")
     args = parser.parse_args()
 
     rows = load(args.pages, args.confidence, args.gold)
@@ -250,9 +261,9 @@ def main():
     print(f"{len(rows)} pages from {len(set(groups))} sites: {len(train)} train, {len(test)} test")
 
     start = perf_counter()
-    thresholds = best_thresholds(train, args.folds)
+    thresholds = best_thresholds(train, args.folds, args.soft)
     print("thresholds: " + ", ".join(f"{p.removeprefix('is_')} {t:.2f}" for p, t in zip(PRESETS, thresholds)))
-    linear = Linear().fit(train)
+    linear = Linear(soft=args.soft).fit(train)
     linear.thresholds = thresholds
     print(f"linear trained in {perf_counter() - start:.1f}s")
     start = perf_counter()
@@ -261,7 +272,7 @@ def main():
 
     # The deployable model is trained on everything, with the thresholds
     # picked on the training split.
-    final = Linear().fit(rows)
+    final = Linear(soft=args.soft).fit(rows)
     final.thresholds = thresholds
     model_path = DATA / "model.joblib"
     joblib.dump(final, model_path, compress=3)

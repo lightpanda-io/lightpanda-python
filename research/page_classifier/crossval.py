@@ -38,6 +38,7 @@ def main():
     parser.add_argument("--gold", type=Path, default=DATA / "gold.jsonl")
     parser.add_argument("--folds", type=Path, default=DATA / "folds.jsonl")
     parser.add_argument("--confidence", type=float, default=0.7)
+    parser.add_argument("--soft", action="store_true", help="also learn the undecided labels at Jev's mean score; writes linear-soft")
     args = parser.parse_args()
 
     rows = load(args.pages, args.confidence, args.gold)
@@ -53,9 +54,9 @@ def main():
         start = perf_counter()
         train = [r for r, k in zip(rows, fold) if k != f]
         test = np.flatnonzero(fold == f)
-        linear[test] = Linear().fit(train).predict([rows[i] for i in test])
+        linear[test] = Linear(soft=args.soft).fit(train).predict([rows[i] for i in test])
         print(f"fold {f}: {len(train)} train, {len(test)} scored in {perf_counter() - start:.0f}s")
-    write(DATA / "oof" / "linear.jsonl", rows, linear)
+    write(DATA / "oof" / ("linear-soft.jsonl" if args.soft else "linear.jsonl"), rows, linear)
     print(f"{len(rows)} pages -> {DATA / 'oof'}")
 
 
