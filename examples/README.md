@@ -355,5 +355,5 @@ is answered only when the model is sure of every preset, and the rest print
 as `jev?`, the pages the cascade would send to Jev:
 
 ```bash
-uv run examples/triage_crawl.py --model research/page_classifier/data/model.lpcm --local
+uv run examples/triage_crawl.py --model ../page-classifier/data/model.lpcm --local
 ```

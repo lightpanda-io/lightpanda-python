@@ -14,7 +14,7 @@ says we are going too fast, accept a cookie wall and look again, wait for a
 page that is still loading, or skip the page and say why.
 
 With --model, only the presets are asked, and the browser answers the ones
-its local model is sure of (a model.lpcm exported by research/page_classifier)
+its local model is sure of (a model.lpcm exported by ../page-classifier)
 and asks Jev only the rest, so run it with and without to compare. Add
 --local to leave Jev out altogether: a page the model is unsure of is
 reported as one that would need Jev.
