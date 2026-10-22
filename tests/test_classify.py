@@ -141,6 +141,18 @@ def test_judge_error_status_skips_the_model(classify_browser, fixture_url):
         assert set(verdict.scores.values()) == {0.9}
 
 
+@pytest.mark.parametrize(
+    "status, check",
+    [(401, "is_login_wall"), (403, "is_blocked"), (429, "is_rate_limited"), (451, "is_region_blocked"), (500, "is_error_page")],
+)
+def test_judge_status_names_its_check(status, check):
+    from lightpanda.browser import PageVerdict
+
+    verdict = PageVerdict._from_status(status, asked=())
+    assert verdict.reason == check
+    assert [attr for attr in verdict.scores if getattr(verdict, attr)] == [check]
+
+
 async def test_judge_async(classify_browser, fixture_url):
     from lightpanda import AsyncBrowser
 

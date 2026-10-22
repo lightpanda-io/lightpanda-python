@@ -165,7 +165,13 @@ class PageVerdict:
 # Of 1,781 pages that answered 4xx or 5xx in the classifier's crawl, the model
 # found none worth reading, so judge() skips them without asking it. The
 # statuses that say why name their check; any other names an error page.
-_STATUS_CHECKS = {401: "is_login_wall", 402: "is_paywall", 403: "is_blocked", 429: "is_blocked"}
+_STATUS_CHECKS = {
+    401: "is_login_wall",
+    402: "is_paywall",
+    403: "is_blocked",
+    429: "is_rate_limited",
+    451: "is_region_blocked",
+}
 
 
 def _snake(name: str) -> str:
