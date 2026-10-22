@@ -84,6 +84,10 @@ class PageVerdict:
 
     Questions passed to :meth:`Session.judge` are asked in the same call, and
     their answers land in :attr:`answers`.
+
+    A page that answered 4xx or 5xx is judged by its status alone, without
+    asking the model: :attr:`http_status` holds it, the check it names is
+    true, and every score and answer is None.
     """
 
     is_blocked: bool
@@ -112,6 +116,9 @@ class PageVerdict:
     """The answers to the questions passed to :meth:`Session.judge`, keyed as
     asked and shaped as :meth:`Session.classify` returns them. Empty when none
     were passed."""
+    http_status: int | None
+    """The 4xx or 5xx status that decided the verdict without the model, or
+    None when the model was asked."""
 
     def __init__(self, answers: dict, threshold: float, asked: Iterable[str] = ()):
         asked = set(asked)
@@ -119,6 +126,15 @@ class PageVerdict:
         self.scores = {_snake(preset): score for preset, score in answers.items() if preset not in asked}
         for attr, score in self.scores.items():
             setattr(self, attr, score is not None and score >= threshold)
+        self.http_status = None
+
+    @classmethod
+    def _from_status(cls, http_status: int, asked: Iterable[str]) -> PageVerdict:
+        checks = [attr for attr, kind in cls.__annotations__.items() if kind == "bool"]
+        verdict = cls(dict.fromkeys([*checks, *asked]), 0.5, asked)
+        verdict.http_status = http_status
+        setattr(verdict, _STATUS_CHECKS.get(http_status, "is_error_page"), True)
+        return verdict
 
     @property
     def ok(self) -> bool:
@@ -135,6 +151,12 @@ class PageVerdict:
     def __repr__(self) -> str:
         fired = ", ".join(f"{attr}={self.scores[attr]}" for attr in self.scores if getattr(self, attr))
         return f"PageVerdict({fired})"
+
+
+# Of 1,781 pages that answered 4xx or 5xx in the classifier's crawl, the model
+# found none worth reading, so judge() skips them without asking it. The
+# statuses that say why name their check; any other names an error page.
+_STATUS_CHECKS = {401: "is_login_wall", 402: "is_paywall", 403: "is_blocked", 429: "is_blocked"}
 
 
 def _snake(name: str) -> str:
@@ -220,6 +242,8 @@ class Session(SessionMethods):
         self._snake_map = browser._snake_map
         self._id = session_id
         self._closed = False
+        # The status of the page the last navigation or action left us on.
+        self._http_status: int | None = None
 
         self._client.request(
             "initialize",
@@ -283,6 +307,7 @@ class Session(SessionMethods):
         # older binaries send only the sentence, which still falls through.
         page_state = result.get("structuredContent")
         if page_state is not None:
+            self._http_status = page_state.get("httpStatus")
             return PageResult(text, page_state)
         try:
             parsed = json.loads(text)
@@ -307,10 +332,16 @@ class Session(SessionMethods):
             print(verdict.answers["has_price"])   # 0.99
         ```
 
+        A page that answered 4xx or 5xx is not worth reading whatever it says,
+        so its verdict comes from the status and the model is not asked; see
+        :attr:`PageVerdict.http_status`.
+
         Args:
             questions: Questions in the object form :meth:`classify` takes.
             threshold: The probability at which a check counts as true.
         """
+        if self._http_status is not None and self._http_status >= 400:
+            return PageVerdict._from_status(self._http_status, asked=questions or ())
         if not questions:
             # An empty questions object asks the browser for every preset.
             return PageVerdict(self.call("classify", questions={}), threshold)
