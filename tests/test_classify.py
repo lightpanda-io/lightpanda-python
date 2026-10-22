@@ -124,6 +124,23 @@ def test_judge_with_questions(classify_browser, fixture_url):
         assert verdict.is_login_wall and not verdict.ok
 
 
+def test_judge_error_status_skips_the_model(classify_browser, fixture_url):
+    with classify_browser.new_session() as page:
+        page.goto(url=f"{fixture_url}/missing.html")
+        verdict = page.judge(questions={"has_price": "Does the page show a price?"})
+        assert verdict.http_status == 404
+        assert verdict.is_error_page and not verdict.is_paywall and not verdict.ok
+        assert verdict.reason == "is_error_page"
+        # The mock answers 0.9 to everything, so None means it was never asked.
+        assert set(verdict.scores.values()) == {None}
+        assert verdict.answers == {"has_price": None}
+
+        page.goto(url=f"{fixture_url}/index.html")
+        verdict = page.judge()
+        assert verdict.http_status is None
+        assert set(verdict.scores.values()) == {0.9}
+
+
 async def test_judge_async(classify_browser, fixture_url):
     from lightpanda import AsyncBrowser
 
