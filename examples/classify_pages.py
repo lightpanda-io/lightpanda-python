@@ -1,10 +1,6 @@
 # /// script
 # requires-python = ">=3.10"
 # dependencies = ["lightpanda"]
-#
-# # judge() is not on PyPI yet: use this checkout until it is.
-# [tool.uv.sources]
-# lightpanda = { path = "..", editable = true }
 # ///
 """Triage a crawl: ``page.judge()`` says whether each page is a wall, a CAPTCHA
 or an empty search, and answers your own questions in the same call.

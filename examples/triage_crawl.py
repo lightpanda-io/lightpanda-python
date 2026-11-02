@@ -1,10 +1,6 @@
 # /// script
 # requires-python = ">=3.10"
 # dependencies = ["lightpanda"]
-#
-# # judge() is not on PyPI yet: use this checkout until it is.
-# [tool.uv.sources]
-# lightpanda = { path = "..", editable = true }
 # ///
 """Triage a crawl of real sites in parallel, and act on what Jev sees.
 
