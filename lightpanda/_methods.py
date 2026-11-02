@@ -20,6 +20,22 @@ class SessionMethods:
     def call(self, tool: str, **kwargs: Any) -> Any:
         raise NotImplementedError
 
+    def accept_cookies(self, *, prefer: str | None = None, selectors: list | None = None) -> Any:
+        """Dismiss the cookie consent banner on the current page: the browser offers the banner's own controls to TypeSafe System One (Jev), clicks the one it picks, and re-reads the page to check the banner went. Returns JSON — `dismissed` is what was clicked, `verified` whether the page agreed afterwards, `selectors` the controls clicked in order, and `reason` why nothing happened when nothing did. A click that leaves a banner up (a confirmation, say) is followed by one more pick. A page with nothing to click costs no model call; passing `selectors` clicks them in order and asks nothing, which is how a recorded call replays. Otherwise needs TYPESAFE_API_KEY.
+
+        Args:
+            prefer: Whether to accept the cookies or refuse all non-essential ones. Defaults to 'accept'.
+            selectors: Optional CSS selectors of the controls to click in order, from an earlier call's result. Clicked without asking the model; one that is not on the page stops the clicking there.
+        """
+        return self.call("acceptCookies", prefer=prefer, selectors=selectors)
+    def call_page_tool(self, *, name: str, arguments: dict | None = None) -> Any:
+        """Call a WebMCP tool the current page registered (see `pageTools`) and return its result: the text of an MCP-style `content` array, or JSON for any other value. A tool that throws or rejects reports its error. The tool runs the site's own code and may change the page or act on the user's account, so treat a tool without `readOnlyHint` like a form submit.
+
+        Args:
+            name: Tool name, as `pageTools` lists it.
+            arguments: Optional. The tool's input, matching its `inputSchema`. Defaults to {}.
+        """
+        return self.call("callPageTool", name=name, arguments=arguments)
     def classify(self, *, questions: str | dict | list, selector: str | None = None, presets: bool | None = None) -> Any:
         """Classify the page or an element subtree using TypeSafe System One (Jev). `questions` is a JSON array of categories (returns the one that fits), or a JSON object of questions keyed by the name each answer comes back under: `true` for a preset (isBlocked, isCaptcha, isConsentWall, isEmptyCatalog, isErrorPage, isLoginWall, isPaywall, isUnsupportedBrowser, isLoading; an empty object `{}` asks all of them), a string for a yes/no question (returns its probability), `{question, options}` for a choice, or `{question, levels}` for a score on 2-10 levels ordered low to high (returns the `score` between level indices, the nearest `level`, and per-level `probabilities`). A missing answer is null.
 
@@ -55,6 +71,14 @@ class SessionMethods:
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return self.call("detectForms", url=url, timeout=timeout)
+    def download(self, *, url: str, path: str) -> Any:
+        """Fetch a URL and save the response body to a local file, sending the session's cookies so authenticated sites work. The way to get a binary or large document (PDF, spreadsheet, archive) out of the browser. Nothing is saved unless the status is 200-203 (like Chrome), and a failed download leaves an existing file at `path` untouched. Requires a loaded page — it fails before the first `goto`.
+
+        Args:
+            url: Absolute http(s) URL to fetch.
+            path: Relative path (no '..' segments) to save the response body to. Created or overwritten. The response reports the absolute location.
+        """
+        return self.call("download", url=url, path=path)
     def evaluate(self, *, script: str, url: str | None = None, timeout: int | None = None, save: str | None = None) -> Any:
         """Evaluate JavaScript in the current page context — an escape hatch for page-side logic the dedicated tools can't express; prefer `extract` for data and click/fill/etc. for actions. It runs in the page, so it cannot see the agent script's variables or builtins — interpolate any value into the `script` string. A bare trailing expression yields its value; top-level `await` and `return` are supported (the body then runs as an async function, so use `return` to produce a value). Objects and arrays return as JSON, so no `JSON.stringify` is needed. If a url is provided, it navigates there first. The `globalThis.lp` object exposes a Session-scoped bridge store: values written via `lp.foo = ...` auto-sync at end of evaluate, surviving navigation; values previously set via `/extract save=` or `/evaluate save=` appear as `lp.<name>`.
 
@@ -194,7 +218,20 @@ class SessionMethods:
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return self.call("links", limit=limit, url=url, timeout=timeout)
-    def markdown(self, *, selector: str | None = None, backend_node_id: int | None = None, max_bytes: int | None = None, strip: dict | None = None, url: str | None = None, timeout: int | None = None) -> Any:
+    def login(self, *, password: str, username: str | None = None, username_selector: str | None = None, password_selector: str | None = None, submit_selector: str | None = None, next_selector: str | None = None, decide_only: bool | None = None) -> Any:
+        """Sign in on the current page. The browser collects the candidate fields and sign-in controls, asks TypeSafe System One (Jev) only what the markup leaves ambiguous, fills the credentials, submits, and re-reads the page to say whether it worked. A password is only ever typed into an `input[type=password]`, and credentials only go to an https (or loopback) page whose form posts to an https URL. Pass `$LP_*` placeholders rather than literal secrets: they resolve inside the browser and never appear in the result. Returns JSON with the selectors it used, so a recorded call replays them with no model call. Otherwise needs TYPESAFE_API_KEY.
+
+        Args:
+            password: The password, as a $LP_* placeholder.
+            username: The username, email or other identifier, as a $LP_* placeholder. Omit on a page that asks only for the password.
+            username_selector: Optional CSS selector of the identifier field, from an earlier call's result. Given with passwordSelector, the fields are filled with no model call.
+            password_selector: Optional CSS selector of the password field, from an earlier call's result. Must name an input[type=password].
+            submit_selector: Optional CSS selector of the control that submits the form. Without it, Enter is pressed in the filled field.
+            next_selector: Optional CSS selector of the control that submits the username on a page that asks for the password on a later step. Without it, Enter is pressed in the username field.
+            decide_only: Report which fields would be used and type nothing. For checking the picks on a page without sending credentials.
+        """
+        return self.call("login", password=password, username=username, username_selector=username_selector, password_selector=password_selector, submit_selector=submit_selector, next_selector=next_selector, decide_only=decide_only)
+    def markdown(self, *, selector: str | None = None, backend_node_id: int | None = None, max_bytes: int | None = None, strip: dict | None = None, url: str | None = None, alternate: bool | None = None, timeout: int | None = None) -> Any:
         """Render the page (or a subtree) as markdown. Scope with `selector` or `backendNodeId` to read just the relevant region — full-page markdown is the last resort. Use `maxBytes` to cap long pages.
 
         Args:
@@ -203,9 +240,10 @@ class SessionMethods:
             max_bytes: Optional soft cap on output size in bytes. Content is truncated at a UTF-8 boundary and a short '[truncated]' marker is appended past the cap.
             strip: Optional. Omit element groups from the output; same groups as the html tool's strip. `shell` (page chrome by markup) and `clutter` (keep only the main content, in the manner of reader modes) are the ones that matter for reading; `ui` also drops images.
             url: Optional URL to navigate to before rendering. An empty string is treated as omitted.
+            alternate: Optional. When the page links a markdown version of itself (<link rel="alternate" type="text/markdown">), return that file instead of converting the page. It is the author's file and can differ from the rendered page; the output then starts with a comment naming its URL, which maxBytes does not count. Falls back to the page when there is no such link, the page itself failed to load (HTTP error status or bot challenge), or the alternate does not load as markdown within what is left of the timeout. Cannot be combined with selector or backendNodeId. Defaults to false.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
-        return self.call("markdown", selector=selector, backend_node_id=backend_node_id, max_bytes=max_bytes, strip=strip, url=url, timeout=timeout)
+        return self.call("markdown", selector=selector, backend_node_id=backend_node_id, max_bytes=max_bytes, strip=strip, url=url, alternate=alternate, timeout=timeout)
     def node_details(self, *, backend_node_id: int) -> Any:
         """Details for a node by backendNodeId: a ready-to-use CSS `selector` that resolves to the node (the first match, as click/fill resolve it), plus tag, role, name, interactivity, disabled, value, input type, placeholder, href, id, class, checked, select options. The canonical way to turn a tree backendNodeId into a CSS selector.
 
@@ -213,6 +251,9 @@ class SessionMethods:
             backend_node_id: The backend node ID of the element to inspect.
         """
         return self.call("nodeDetails", backend_node_id=backend_node_id)
+    def page_tools(self) -> Any:
+        """List the tools the current page registers for agents through WebMCP (`navigator.modelContext.registerTool`), as JSON with each tool's `name`, `description`, `inputSchema` and hints. A page tool runs the site's own code and can be more reliable than driving its UI; call one with `callPageTool`. Many pages register their tools after `load`: if the list is empty on a page you expect to have tools, call `waitForState` with `networkidle` and list again."""
+        return self.call("pageTools")
     def press(self, *, key: str, selector: str | None = None, backend_node_id: int | None = None) -> PageResult:
         """Press a keyboard key, dispatching keydown and keyup events. Use key names like 'Enter', 'Tab', 'Escape', 'ArrowDown', 'Backspace', or single characters like 'a', '1'. Common shorthand is normalized: 'enter'/'return' → 'Enter', 'esc' → 'Escape', 'up'/'down'/'left'/'right' → 'Arrow*', 'space' → ' '. Pressing 'Enter' on a form input or submit button triggers implicit form submission.
 
@@ -229,6 +270,15 @@ class SessionMethods:
             - `title`: Document title. Empty or absent when the page has none.
         """
         return self.call("press", key=key, selector=selector, backend_node_id=backend_node_id)
+    def run(self, *, script: str | None = None, path: str | None = None, timeout: int | None = None) -> Any:
+        """Run a Lightpanda agent script in this session, as `lightpanda run` does, and return its console output followed by the value it returns. Pass the source as `script`, or the `path` of a file `save` wrote. The script drives pages through `const page = new Page(); await page.goto(url);` and the builtins as methods on `page`; `$LP_*` placeholders are resolved. Pages the script opens are closed when it ends; cookies and storage stay in the session, so a login carries over to the next call. Script variables do not carry over. A thrown error, a failed step or the timeout ends the script and is reported as an error after the output so far.
+
+        Args:
+            script: The agent script source, as `save` writes it or `lightpanda run` takes it. Pass this or `path`.
+            path: A script file to run instead of `script`, such as one `save` wrote. Relative to the server's working directory.
+            timeout: Optional. Milliseconds before the script is stopped and reported as an error with its output so far. At least 1; defaults to 60000.
+        """
+        return self.call("run", script=script, path=path, timeout=timeout)
     def screenshot(self, *, path: str | None = None, selector: str | None = None, backend_node_id: int | None = None, full_page: bool | None = None, strip: dict | None = None, url: str | None = None, timeout: int | None = None) -> Any:
         """Render the page, or one node, as a PNG: the text layout Lightpanda computes, not a pixel-accurate browser rendering (no images, fonts or CSS colours). With `path`, writes the file at full size and returns its location; without it, returns the image inline where the client can display one, at most 1280px wide and 4096px tall. Use it to see spatial layout; read content with `markdown`/`tree`.
 
@@ -260,7 +310,7 @@ class SessionMethods:
         """
         return self.call("scroll", selector=selector, backend_node_id=backend_node_id, x=x, y=y)
     def search(self, *, query: str, timeout: int | None = None) -> Any:
-        """Run a web search and return results as markdown: a numbered list of {title, url, snippet}. Search tries brave, tavily, exa, then keenable in order, each when its API key (BRAVE_API_KEY, TAVILY_API_KEY, EXA_API_KEY or KEENABLE_API_KEY) is set; keenable also works without a key through its public endpoint (rate-limited per client IP). Prefer this over goto-ing google.com/search directly (Google blocks the browser on User-Agent/TLS). The browser does not navigate — to open a result, use `goto` with its URL.
+        """Run a web search and return results as markdown: a numbered list of {title, url, snippet}. Search tries brave, tavily, exa, parallel, then keenable in order, each when its API key (BRAVE_API_KEY, TAVILY_API_KEY, EXA_API_KEY, PARALLEL_API_KEY or KEENABLE_API_KEY) is set; keenable also works without a key through its public endpoint (rate-limited per client IP). Prefer this over goto-ing google.com/search directly (Google blocks the browser on User-Agent/TLS). The browser does not navigate — to open a result, use `goto` with its URL.
 
         Args:
             query: The search query.
@@ -391,14 +441,15 @@ class ElementMethods:
             strip: Optional. Omit element groups from the output: `js` (script, noscript, script preloads), `css` (style, stylesheet links), `ui` (css plus img, picture, video, audio, svg, canvas, iframe), `invisible` (elements an author rule or inline style sets to display:none), `shell` (nav, aside, dialog, page-level header/footer and the matching landmark roles; skipped when that would drop most of the text), `clutter` (keep only the main content, in the manner of reader modes; includes `shell` and `invisible`, and falls back to `shell` when it finds too little). {"js":true,"css":true} keeps a page dump small.
         """
         return self.call("html", max_bytes=max_bytes, strip=strip)
-    def markdown(self, *, max_bytes: int | None = None, strip: dict | None = None) -> Any:
+    def markdown(self, *, max_bytes: int | None = None, strip: dict | None = None, alternate: bool | None = None) -> Any:
         """Render the page (or a subtree) as markdown. Scope with `selector` or `backendNodeId` to read just the relevant region — full-page markdown is the last resort. Use `maxBytes` to cap long pages.
 
         Args:
             max_bytes: Optional soft cap on output size in bytes. Content is truncated at a UTF-8 boundary and a short '[truncated]' marker is appended past the cap.
             strip: Optional. Omit element groups from the output; same groups as the html tool's strip. `shell` (page chrome by markup) and `clutter` (keep only the main content, in the manner of reader modes) are the ones that matter for reading; `ui` also drops images.
+            alternate: Optional. When the page links a markdown version of itself (<link rel="alternate" type="text/markdown">), return that file instead of converting the page. It is the author's file and can differ from the rendered page; the output then starts with a comment naming its URL, which maxBytes does not count. Falls back to the page when there is no such link, the page itself failed to load (HTTP error status or bot challenge), or the alternate does not load as markdown within what is left of the timeout. Cannot be combined with selector or backendNodeId. Defaults to false.
         """
-        return self.call("markdown", max_bytes=max_bytes, strip=strip)
+        return self.call("markdown", max_bytes=max_bytes, strip=strip, alternate=alternate)
     def node_details(self) -> Any:
         """Details for a node by backendNodeId: a ready-to-use CSS `selector` that resolves to the node (the first match, as click/fill resolve it), plus tag, role, name, interactivity, disabled, value, input type, placeholder, href, id, class, checked, select options. The canonical way to turn a tree backendNodeId into a CSS selector."""
         return self.call("nodeDetails")
@@ -481,6 +532,22 @@ class AsyncSessionMethods:
     async def call(self, tool: str, **kwargs: Any) -> Any:
         raise NotImplementedError
 
+    async def accept_cookies(self, *, prefer: str | None = None, selectors: list | None = None) -> Any:
+        """Dismiss the cookie consent banner on the current page: the browser offers the banner's own controls to TypeSafe System One (Jev), clicks the one it picks, and re-reads the page to check the banner went. Returns JSON — `dismissed` is what was clicked, `verified` whether the page agreed afterwards, `selectors` the controls clicked in order, and `reason` why nothing happened when nothing did. A click that leaves a banner up (a confirmation, say) is followed by one more pick. A page with nothing to click costs no model call; passing `selectors` clicks them in order and asks nothing, which is how a recorded call replays. Otherwise needs TYPESAFE_API_KEY.
+
+        Args:
+            prefer: Whether to accept the cookies or refuse all non-essential ones. Defaults to 'accept'.
+            selectors: Optional CSS selectors of the controls to click in order, from an earlier call's result. Clicked without asking the model; one that is not on the page stops the clicking there.
+        """
+        return await self.call("acceptCookies", prefer=prefer, selectors=selectors)
+    async def call_page_tool(self, *, name: str, arguments: dict | None = None) -> Any:
+        """Call a WebMCP tool the current page registered (see `pageTools`) and return its result: the text of an MCP-style `content` array, or JSON for any other value. A tool that throws or rejects reports its error. The tool runs the site's own code and may change the page or act on the user's account, so treat a tool without `readOnlyHint` like a form submit.
+
+        Args:
+            name: Tool name, as `pageTools` lists it.
+            arguments: Optional. The tool's input, matching its `inputSchema`. Defaults to {}.
+        """
+        return await self.call("callPageTool", name=name, arguments=arguments)
     async def classify(self, *, questions: str | dict | list, selector: str | None = None, presets: bool | None = None) -> Any:
         """Classify the page or an element subtree using TypeSafe System One (Jev). `questions` is a JSON array of categories (returns the one that fits), or a JSON object of questions keyed by the name each answer comes back under: `true` for a preset (isBlocked, isCaptcha, isConsentWall, isEmptyCatalog, isErrorPage, isLoginWall, isPaywall, isUnsupportedBrowser, isLoading; an empty object `{}` asks all of them), a string for a yes/no question (returns its probability), `{question, options}` for a choice, or `{question, levels}` for a score on 2-10 levels ordered low to high (returns the `score` between level indices, the nearest `level`, and per-level `probabilities`). A missing answer is null.
 
@@ -516,6 +583,14 @@ class AsyncSessionMethods:
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return await self.call("detectForms", url=url, timeout=timeout)
+    async def download(self, *, url: str, path: str) -> Any:
+        """Fetch a URL and save the response body to a local file, sending the session's cookies so authenticated sites work. The way to get a binary or large document (PDF, spreadsheet, archive) out of the browser. Nothing is saved unless the status is 200-203 (like Chrome), and a failed download leaves an existing file at `path` untouched. Requires a loaded page — it fails before the first `goto`.
+
+        Args:
+            url: Absolute http(s) URL to fetch.
+            path: Relative path (no '..' segments) to save the response body to. Created or overwritten. The response reports the absolute location.
+        """
+        return await self.call("download", url=url, path=path)
     async def evaluate(self, *, script: str, url: str | None = None, timeout: int | None = None, save: str | None = None) -> Any:
         """Evaluate JavaScript in the current page context — an escape hatch for page-side logic the dedicated tools can't express; prefer `extract` for data and click/fill/etc. for actions. It runs in the page, so it cannot see the agent script's variables or builtins — interpolate any value into the `script` string. A bare trailing expression yields its value; top-level `await` and `return` are supported (the body then runs as an async function, so use `return` to produce a value). Objects and arrays return as JSON, so no `JSON.stringify` is needed. If a url is provided, it navigates there first. The `globalThis.lp` object exposes a Session-scoped bridge store: values written via `lp.foo = ...` auto-sync at end of evaluate, surviving navigation; values previously set via `/extract save=` or `/evaluate save=` appear as `lp.<name>`.
 
@@ -655,7 +730,20 @@ class AsyncSessionMethods:
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return await self.call("links", limit=limit, url=url, timeout=timeout)
-    async def markdown(self, *, selector: str | None = None, backend_node_id: int | None = None, max_bytes: int | None = None, strip: dict | None = None, url: str | None = None, timeout: int | None = None) -> Any:
+    async def login(self, *, password: str, username: str | None = None, username_selector: str | None = None, password_selector: str | None = None, submit_selector: str | None = None, next_selector: str | None = None, decide_only: bool | None = None) -> Any:
+        """Sign in on the current page. The browser collects the candidate fields and sign-in controls, asks TypeSafe System One (Jev) only what the markup leaves ambiguous, fills the credentials, submits, and re-reads the page to say whether it worked. A password is only ever typed into an `input[type=password]`, and credentials only go to an https (or loopback) page whose form posts to an https URL. Pass `$LP_*` placeholders rather than literal secrets: they resolve inside the browser and never appear in the result. Returns JSON with the selectors it used, so a recorded call replays them with no model call. Otherwise needs TYPESAFE_API_KEY.
+
+        Args:
+            password: The password, as a $LP_* placeholder.
+            username: The username, email or other identifier, as a $LP_* placeholder. Omit on a page that asks only for the password.
+            username_selector: Optional CSS selector of the identifier field, from an earlier call's result. Given with passwordSelector, the fields are filled with no model call.
+            password_selector: Optional CSS selector of the password field, from an earlier call's result. Must name an input[type=password].
+            submit_selector: Optional CSS selector of the control that submits the form. Without it, Enter is pressed in the filled field.
+            next_selector: Optional CSS selector of the control that submits the username on a page that asks for the password on a later step. Without it, Enter is pressed in the username field.
+            decide_only: Report which fields would be used and type nothing. For checking the picks on a page without sending credentials.
+        """
+        return await self.call("login", password=password, username=username, username_selector=username_selector, password_selector=password_selector, submit_selector=submit_selector, next_selector=next_selector, decide_only=decide_only)
+    async def markdown(self, *, selector: str | None = None, backend_node_id: int | None = None, max_bytes: int | None = None, strip: dict | None = None, url: str | None = None, alternate: bool | None = None, timeout: int | None = None) -> Any:
         """Render the page (or a subtree) as markdown. Scope with `selector` or `backendNodeId` to read just the relevant region — full-page markdown is the last resort. Use `maxBytes` to cap long pages.
 
         Args:
@@ -664,9 +752,10 @@ class AsyncSessionMethods:
             max_bytes: Optional soft cap on output size in bytes. Content is truncated at a UTF-8 boundary and a short '[truncated]' marker is appended past the cap.
             strip: Optional. Omit element groups from the output; same groups as the html tool's strip. `shell` (page chrome by markup) and `clutter` (keep only the main content, in the manner of reader modes) are the ones that matter for reading; `ui` also drops images.
             url: Optional URL to navigate to before rendering. An empty string is treated as omitted.
+            alternate: Optional. When the page links a markdown version of itself (<link rel="alternate" type="text/markdown">), return that file instead of converting the page. It is the author's file and can differ from the rendered page; the output then starts with a comment naming its URL, which maxBytes does not count. Falls back to the page when there is no such link, the page itself failed to load (HTTP error status or bot challenge), or the alternate does not load as markdown within what is left of the timeout. Cannot be combined with selector or backendNodeId. Defaults to false.
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
-        return await self.call("markdown", selector=selector, backend_node_id=backend_node_id, max_bytes=max_bytes, strip=strip, url=url, timeout=timeout)
+        return await self.call("markdown", selector=selector, backend_node_id=backend_node_id, max_bytes=max_bytes, strip=strip, url=url, alternate=alternate, timeout=timeout)
     async def node_details(self, *, backend_node_id: int) -> Any:
         """Details for a node by backendNodeId: a ready-to-use CSS `selector` that resolves to the node (the first match, as click/fill resolve it), plus tag, role, name, interactivity, disabled, value, input type, placeholder, href, id, class, checked, select options. The canonical way to turn a tree backendNodeId into a CSS selector.
 
@@ -674,6 +763,9 @@ class AsyncSessionMethods:
             backend_node_id: The backend node ID of the element to inspect.
         """
         return await self.call("nodeDetails", backend_node_id=backend_node_id)
+    async def page_tools(self) -> Any:
+        """List the tools the current page registers for agents through WebMCP (`navigator.modelContext.registerTool`), as JSON with each tool's `name`, `description`, `inputSchema` and hints. A page tool runs the site's own code and can be more reliable than driving its UI; call one with `callPageTool`. Many pages register their tools after `load`: if the list is empty on a page you expect to have tools, call `waitForState` with `networkidle` and list again."""
+        return await self.call("pageTools")
     async def press(self, *, key: str, selector: str | None = None, backend_node_id: int | None = None) -> PageResult:
         """Press a keyboard key, dispatching keydown and keyup events. Use key names like 'Enter', 'Tab', 'Escape', 'ArrowDown', 'Backspace', or single characters like 'a', '1'. Common shorthand is normalized: 'enter'/'return' → 'Enter', 'esc' → 'Escape', 'up'/'down'/'left'/'right' → 'Arrow*', 'space' → ' '. Pressing 'Enter' on a form input or submit button triggers implicit form submission.
 
@@ -690,6 +782,15 @@ class AsyncSessionMethods:
             - `title`: Document title. Empty or absent when the page has none.
         """
         return await self.call("press", key=key, selector=selector, backend_node_id=backend_node_id)
+    async def run(self, *, script: str | None = None, path: str | None = None, timeout: int | None = None) -> Any:
+        """Run a Lightpanda agent script in this session, as `lightpanda run` does, and return its console output followed by the value it returns. Pass the source as `script`, or the `path` of a file `save` wrote. The script drives pages through `const page = new Page(); await page.goto(url);` and the builtins as methods on `page`; `$LP_*` placeholders are resolved. Pages the script opens are closed when it ends; cookies and storage stay in the session, so a login carries over to the next call. Script variables do not carry over. A thrown error, a failed step or the timeout ends the script and is reported as an error after the output so far.
+
+        Args:
+            script: The agent script source, as `save` writes it or `lightpanda run` takes it. Pass this or `path`.
+            path: A script file to run instead of `script`, such as one `save` wrote. Relative to the server's working directory.
+            timeout: Optional. Milliseconds before the script is stopped and reported as an error with its output so far. At least 1; defaults to 60000.
+        """
+        return await self.call("run", script=script, path=path, timeout=timeout)
     async def screenshot(self, *, path: str | None = None, selector: str | None = None, backend_node_id: int | None = None, full_page: bool | None = None, strip: dict | None = None, url: str | None = None, timeout: int | None = None) -> Any:
         """Render the page, or one node, as a PNG: the text layout Lightpanda computes, not a pixel-accurate browser rendering (no images, fonts or CSS colours). With `path`, writes the file at full size and returns its location; without it, returns the image inline where the client can display one, at most 1280px wide and 4096px tall. Use it to see spatial layout; read content with `markdown`/`tree`.
 
@@ -721,7 +822,7 @@ class AsyncSessionMethods:
         """
         return await self.call("scroll", selector=selector, backend_node_id=backend_node_id, x=x, y=y)
     async def search(self, *, query: str, timeout: int | None = None) -> Any:
-        """Run a web search and return results as markdown: a numbered list of {title, url, snippet}. Search tries brave, tavily, exa, then keenable in order, each when its API key (BRAVE_API_KEY, TAVILY_API_KEY, EXA_API_KEY or KEENABLE_API_KEY) is set; keenable also works without a key through its public endpoint (rate-limited per client IP). Prefer this over goto-ing google.com/search directly (Google blocks the browser on User-Agent/TLS). The browser does not navigate — to open a result, use `goto` with its URL.
+        """Run a web search and return results as markdown: a numbered list of {title, url, snippet}. Search tries brave, tavily, exa, parallel, then keenable in order, each when its API key (BRAVE_API_KEY, TAVILY_API_KEY, EXA_API_KEY, PARALLEL_API_KEY or KEENABLE_API_KEY) is set; keenable also works without a key through its public endpoint (rate-limited per client IP). Prefer this over goto-ing google.com/search directly (Google blocks the browser on User-Agent/TLS). The browser does not navigate — to open a result, use `goto` with its URL.
 
         Args:
             query: The search query.
@@ -852,14 +953,15 @@ class AsyncElementMethods:
             strip: Optional. Omit element groups from the output: `js` (script, noscript, script preloads), `css` (style, stylesheet links), `ui` (css plus img, picture, video, audio, svg, canvas, iframe), `invisible` (elements an author rule or inline style sets to display:none), `shell` (nav, aside, dialog, page-level header/footer and the matching landmark roles; skipped when that would drop most of the text), `clutter` (keep only the main content, in the manner of reader modes; includes `shell` and `invisible`, and falls back to `shell` when it finds too little). {"js":true,"css":true} keeps a page dump small.
         """
         return await self.call("html", max_bytes=max_bytes, strip=strip)
-    async def markdown(self, *, max_bytes: int | None = None, strip: dict | None = None) -> Any:
+    async def markdown(self, *, max_bytes: int | None = None, strip: dict | None = None, alternate: bool | None = None) -> Any:
         """Render the page (or a subtree) as markdown. Scope with `selector` or `backendNodeId` to read just the relevant region — full-page markdown is the last resort. Use `maxBytes` to cap long pages.
 
         Args:
             max_bytes: Optional soft cap on output size in bytes. Content is truncated at a UTF-8 boundary and a short '[truncated]' marker is appended past the cap.
             strip: Optional. Omit element groups from the output; same groups as the html tool's strip. `shell` (page chrome by markup) and `clutter` (keep only the main content, in the manner of reader modes) are the ones that matter for reading; `ui` also drops images.
+            alternate: Optional. When the page links a markdown version of itself (<link rel="alternate" type="text/markdown">), return that file instead of converting the page. It is the author's file and can differ from the rendered page; the output then starts with a comment naming its URL, which maxBytes does not count. Falls back to the page when there is no such link, the page itself failed to load (HTTP error status or bot challenge), or the alternate does not load as markdown within what is left of the timeout. Cannot be combined with selector or backendNodeId. Defaults to false.
         """
-        return await self.call("markdown", max_bytes=max_bytes, strip=strip)
+        return await self.call("markdown", max_bytes=max_bytes, strip=strip, alternate=alternate)
     async def node_details(self) -> Any:
         """Details for a node by backendNodeId: a ready-to-use CSS `selector` that resolves to the node (the first match, as click/fill resolve it), plus tag, role, name, interactivity, disabled, value, input type, placeholder, href, id, class, checked, select options. The canonical way to turn a tree backendNodeId into a CSS selector."""
         return await self.call("nodeDetails")
