@@ -251,12 +251,17 @@ A score falls between its levels (0 = none, 2 = plenty). Scores vary a little
 between runs. The `jev` time is the whole call: the browser reading the page,
 then the round trip to TypeSafe, which reuses one connection after the first.
 
-Needs `TYPESAFE_API_KEY`, and a browser with the `classify` tool. Until a
-release ships both, the script installs this checkout rather than the PyPI
-package, so run it from here against a local browser build:
+Needs `TYPESAFE_API_KEY` and a `lightpanda` release with `judge()`:
 
 ```bash
-LIGHTPANDA_BIN=../browser/zig-out/bin/lightpanda uv run examples/classify_pages.py
+uv run examples/classify_pages.py
+```
+
+To run it from this checkout against a local browser build instead, use the
+project's environment:
+
+```bash
+LIGHTPANDA_BIN=../browser/zig-out/bin/lightpanda uv run python examples/classify_pages.py
 ```
 
 ## `triage_crawl.py` — crawl real sites in parallel and act on what Jev sees
@@ -275,7 +280,9 @@ QUESTIONS = {
 }
 
 verdict = await page.judge(questions=QUESTIONS)
-if verdict.answers["rate_limited"] >= 0.5:
+if verdict.http_status is not None:                # 4xx or 5xx: judged by status, no answers
+    ...
+elif verdict.answers["rate_limited"] >= 0.5:
     await asyncio.sleep(3)                         # and load it again
 elif verdict.is_consent_wall:
     found = await page.find_element(role="button", name="/^(accept|aceptar|akzeptieren)/i")
@@ -284,47 +291,49 @@ elif verdict.is_consent_wall:
 
 Every verdict prints a line. One the crawler acts on says `retry` and what it
 does about it, and the page's last verdict says `keep` or `skip`, so the two
-cookie walls show up twice and a rate-limited page once per try:
+cookie walls show up twice and a rate-limited page once per try. `decision` is
+the `judge()` call alone, `total` the page so far, load and any retries
+included. A page that answered 4xx or 5xx is judged by its status without
+asking Jev, so it shows the status instead of a decision time:
 
 ```
-keep   docs.python.org/3/library/asyncio.html        docs                    0.47s
-keep   developer.mozilla.org/en-US/docs/Web/API/Fet  docs                    0.69s
-keep   en.wikipedia.org/wiki/Headless_browser        article                 0.71s
-keep   en.wikipedia.org/wiki/Web_scraping            article                 0.93s
-keep   quotes.toscrape.com/js/                       listing                 1.00s
-keep   books.toscrape.com/catalogue/a-light-in-the-  product                 1.24s
-keep   lobste.rs/                                    listing                 1.12s
-keep   www.spiegel.de/                               listing                 1.21s
-keep   github.com/lightpanda-io/browser              listing                 1.60s
-keep   news.ycombinator.com/                         listing                 1.15s
-keep   news.ycombinator.com/newest                   listing                 1.31s
-skip   www.g2.com/                                   blocked                 0.35s
-retry  news.ycombinator.com/login                    rate limited            0.98s  -> back off 3s
-skip   github.com/settings/profile                   login wall              1.01s
-retry  www.20minutes.fr/                             consent wall            1.33s  -> accept cookies
-skip   www.wsj.com/                                  captcha                 0.59s
-skip   www.economist.com/leaders/2024/01/04/what-to  blocked                 0.39s
-skip   www.linkedin.com/feed/                        login wall              1.61s
-skip   stackoverflow.com/questions/231767/what-does  blocked                 0.49s
-skip   pypi.org/project/lightpanda/                  captcha                 0.74s
-skip   www.zeit.de/index                             error page              0.35s
-retry  www.elmundo.es/                               consent wall            3.01s  -> accept cookies
-skip   www.npmjs.com/search?q=xqzzzvqkplorbt         empty catalog           1.02s
-skip   web.whatsapp.com/                             unsupported browser     1.07s
-skip   github.com/search?q=xqzzzvqkplorbt&type=repo  empty catalog           1.59s
-skip   www.python.org/no-such-page                   error page              0.94s
-skip   news.ycombinator.com/login                    login wall              4.36s
-skip   arxiv.org/abs/1706.03762                      error page              0.40s
-keep   www.elmundo.es/                               other                   5.23s
-skip   github.com/lightpanda-io/does-not-exist       error page              0.92s
-skip   en.wikipedia.org/w/index.php?search=xqzzzvqk  empty catalog           1.55s
-skip   www.ebay.com/sch/i.html?_nkw=xqzzzvqkplorbt   error page              0.60s
-keep   www.20minutes.fr/                             other                   6.11s
+keep   docs.python.org/3/library/asyncio.html        docs                    decision 0.23s  total  0.40s
+keep   en.wikipedia.org/wiki/Headless_browser        article                 decision 0.23s  total  0.52s
+keep   en.wikipedia.org/wiki/Web_scraping            article                 decision 0.23s  total  0.53s
+keep   quotes.toscrape.com/js/                       listing                 decision 0.14s  total  0.90s
+keep   books.toscrape.com/catalogue/a-light-in-the-  product                 decision 0.14s  total  1.17s
+keep   www.spiegel.de/                               listing                 decision 0.31s  total  0.85s
+keep   github.com/lightpanda-io/browser              docs                    decision 0.21s  total  1.07s
+keep   lobste.rs/                                    listing                 decision 0.15s  total  1.08s
+keep   news.ycombinator.com/                         listing                 decision 0.22s  total  1.15s
+keep   news.ycombinator.com/newest                   listing                 decision 0.15s  total  1.06s
+retry  www.20minutes.fr/                             consent wall            decision 0.15s  total  0.94s  -> accept cookies
+skip   news.ycombinator.com/login                    login wall              decision 0.14s  total  0.88s
+skip   www.g2.com/                                   blocked                 http 403        total  0.19s
+skip   github.com/settings/profile                   login wall              decision 0.17s  total  0.91s
+skip   www.economist.com/leaders/2024/01/04/what-to  blocked                 http 403        total  0.23s
+skip   www.wsj.com/                                  login wall              http 401        total  0.59s
+skip   stackoverflow.com/questions/231767/what-does  blocked                 http 403        total  0.23s
+skip   www.zeit.de/index                             blocked                 http 403        total  0.09s
+skip   www.linkedin.com/feed/                        login wall              decision 0.15s  total  1.47s
+retry  www.elmundo.es/                               consent wall            decision 0.18s  total  2.60s  -> accept cookies
+keep   developer.mozilla.org/en-US/docs/Web/API/Fet  docs                    decision 3.66s  total  4.03s
+skip   www.npmjs.com/search?q=xqzzzvqkplorbt         blocked                 http 403        total  0.42s
+keep   pypi.org/project/lightpanda/                  product                 decision 0.15s  total  1.29s
+skip   web.whatsapp.com/                             unsupported browser     decision 0.16s  total  1.05s
+skip   github.com/search?q=xqzzzvqkplorbt&type=repo  empty catalog           decision 0.19s  total  1.20s
+skip   arxiv.org/abs/1706.03762                      blocked                 http 403        total  0.06s
+skip   www.python.org/no-such-page                   error page              http 404        total  1.04s
+skip   www.ebay.com/sch/i.html?_nkw=xqzzzvqkplorbt   blocked                 http 403        total  0.38s
+skip   github.com/lightpanda-io/does-not-exist       error page              http 404        total  1.03s
+skip   en.wikipedia.org/w/index.php?search=xqzzzvqk  empty catalog           decision 0.17s  total  2.75s
+keep   www.20minutes.fr/                             listing                 decision 0.17s  total  6.16s
+keep   www.elmundo.es/                               other                   decision 0.17s  total  8.07s
 
-30 pages in 10.1s with 6 crawlers (41.0s of page time): 13 kept, 17 skipped
-Jev: 33 calls, median 0.22s, p90 0.30s
-skipped: error page 5, login wall 3, blocked 3, empty catalog 3, captcha 2, unsupported browser 1
-acted:   accept cookies 2, back off 1
+30 pages in 9.7s with 6 crawlers (41.1s of page time): 14 kept, 16 skipped
+Jev: 22 calls, median 0.17s, p90 0.29s
+skipped: blocked 7, login wall 4, empty catalog 2, error page 2, unsupported browser 1
+acted:   accept cookies 2
 ```
 
 What the walls actually showed: El Mundo's and 20 Minutes' cookie walls are
@@ -340,8 +349,9 @@ how often Hacker News pushes back, or whether a challenge page scores as
 loads their pages in parallel. Known misses: Zillow's home page scores as an
 empty search, and Le Monde's front page leans paywall (0.71).
 
-Runs from this checkout against a local browser build, like `classify_pages.py`:
+Runs like `classify_pages.py`, from a release or from this checkout:
 
 ```bash
-LIGHTPANDA_BIN=../browser/zig-out/bin/lightpanda uv run examples/triage_crawl.py
+uv run examples/triage_crawl.py
+LIGHTPANDA_BIN=../browser/zig-out/bin/lightpanda uv run python examples/triage_crawl.py
 ```

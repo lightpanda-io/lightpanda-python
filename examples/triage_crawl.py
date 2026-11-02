@@ -81,13 +81,19 @@ def paint(text, color):
 
 
 async def judge(page):
+    """The verdict and the seconds Jev took to reach it."""
     start = perf_counter()
     verdict = await page.judge(questions=QUESTIONS)
-    jev_times.append(perf_counter() - start)
-    return verdict
+    decision = perf_counter() - start
+    if verdict.http_status is None:  # a 4xx or 5xx page is judged without Jev
+        jev_times.append(decision)
+    return verdict, decision
 
 
 def rate_limited(verdict):
+    # A 4xx or 5xx page is judged by its status alone, so our question has no answer.
+    if verdict.http_status is not None:
+        return verdict.http_status == 429
     return verdict.answers["rate_limited"] >= 0.5
 
 
@@ -107,7 +113,7 @@ async def visit(page, url):
     start = perf_counter()
     actions = []
 
-    def show(verdict, action=None, detail=""):
+    def show(verdict, decision, action=None, detail=""):
         if action:
             actions.append(action)
             status, note = paint("retry", "yellow"), paint(f"  -> {action}{detail}", "yellow")
@@ -115,34 +121,38 @@ async def visit(page, url):
             status, note = paint("keep ", "green"), ""
         else:
             status, note = paint("skip ", "red"), ""
-        took = paint(f"{perf_counter() - start:.2f}s", "dim")
+        if verdict.http_status is None:
+            decided = f"decision {decision:.2f}s"
+        else:
+            decided = f"http {verdict.http_status:<9}"
+        took = paint(f"{decided}  total {perf_counter() - start:5.2f}s", "dim")
         print(f"{status}  {name:<44}  {describe(verdict):<22}  {took}{note}")
 
     await page.goto(url=url)
-    verdict = await judge(page)
+    verdict, decision = await judge(page)
 
     for attempt in (1, 2):
         if not rate_limited(verdict):
             break
-        show(verdict, "back off", f" {3 * attempt}s")
+        show(verdict, decision, "back off", f" {3 * attempt}s")
         await asyncio.sleep(3 * attempt)
         await page.goto(url=url)
-        verdict = await judge(page)
+        verdict, decision = await judge(page)
 
     if verdict.is_consent_wall:
         found = await page.find_element(role="button", name=ACCEPT)
         if found:
-            show(verdict, "accept cookies")
+            show(verdict, decision, "accept cookies")
             await found[0].click()
             await page.wait_for_state(state="networkidle")  # banners fade out
-            verdict = await judge(page)
+            verdict, decision = await judge(page)
 
     if verdict.is_loading:
-        show(verdict, "wait")
+        show(verdict, decision, "wait")
         await page.wait_for_state(state="networkidle")
-        verdict = await judge(page)
+        verdict, decision = await judge(page)
 
-    show(verdict)
+    show(verdict, decision)
     return verdict, actions
 
 
