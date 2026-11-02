@@ -7,6 +7,8 @@ anywhere with [uv](https://docs.astral.sh/uv/) and nothing pre-installed:
 uv run examples/quotes_analysis.py
 uv run examples/compare.py --repeat 5
 uv run examples/neurips_topics.py
+uv run examples/classify_pages.py   # needs TYPESAFE_API_KEY
+uv run examples/triage_crawl.py     # needs TYPESAFE_API_KEY
 ```
 
 Set `LIGHTPANDA_BIN=/path/to/lightpanda` to run against a local browser build
@@ -214,3 +216,142 @@ scores the same as `-2` within noise, but it is the legacy model. With a key the
 whole corpus embeds in about twenty seconds; without one it takes considerably
 longer, once, and the 27 MB cache under `~/.cache/neurips_topics` makes every
 later run instant.
+
+## `classify_pages.py` — triage a crawl before scraping it
+
+A 200 response can still be a login wall, a CAPTCHA or an empty search.
+`page.judge()` asks TypeSafe's page model about the rendered page and says
+whether to skip it, and why. Your own questions ride along in the same call,
+yes/no, a choice, or a score, so each page costs one round trip:
+
+```python
+verdict = page.judge(questions={
+    "has_price": "Does the page show a price?",                     # -> 0.99
+    "kind": {"question": "What kind of page is this?",
+             "options": ["product", "listing", "article", "other"]},  # -> {"choice": "product", ...}
+    "content": {"question": "How much useful content would a scraper get from this page?",
+                "levels": ["none", "little", "plenty"]},             # -> {"level": "plenty", "score": 1.90, ...}
+})
+if not verdict.ok:
+    print("skip", verdict.reason)           # is_captcha
+else:
+    print(verdict.answers["kind"]["choice"])  # product
+```
+
+```
+keep  books.toscrape.com/catalogue/a-light-in-  product  price 0.99  content plenty (1.94)  [load 1.11s, jev 0.37s]
+keep  quotes.toscrape.com/js/                   listing  price 0.01  content plenty (1.91)  [load 0.95s, jev 0.23s]
+keep  en.wikipedia.org/wiki/Headless_browser    article  price 0.02  content plenty (1.74)  [load 0.59s, jev 0.25s]
+skip  news.ycombinator.com/login                is_login_wall                           [load 0.57s, jev 0.23s]
+skip  en.wikipedia.org/w/index.php?search=xqzz  is_empty_catalog                        [load 1.18s, jev 0.26s]
+skip  www.g2.com/                               is_captcha                              [load 0.16s, jev 0.20s]
+```
+
+A score falls between its levels (0 = none, 2 = plenty). Scores vary a little
+between runs. The `jev` time is the whole call: the browser reading the page,
+then the round trip to TypeSafe, which reuses one connection after the first.
+
+Needs `TYPESAFE_API_KEY` and a `lightpanda` release with `judge()`:
+
+```bash
+uv run examples/classify_pages.py
+```
+
+To run it from this checkout against a local browser build instead, use the
+project's environment:
+
+```bash
+LIGHTPANDA_BIN=../browser/zig-out/bin/lightpanda uv run python examples/classify_pages.py
+```
+
+## `triage_crawl.py` — crawl real sites in parallel and act on what Jev sees
+
+The same `judge()` call over 30 real pages, six at a time in one browser. The
+verdict decides what the crawler does next: back off when the site says we are
+going too fast, accept a cookie wall, wait for a page that is still loading,
+and then look again; or keep the page, or skip it and say why. "Too fast" is
+our own question, asked in the same call as the wall checks:
+
+```python
+QUESTIONS = {
+    "rate_limited": "Does the page say we sent too many requests and should slow down or retry later?",
+    "kind": {"question": "What kind of page is this?",
+             "options": ["product", "listing", "article", "docs", "search", "other"]},
+}
+
+verdict = await page.judge(questions=QUESTIONS)
+if verdict.http_status is not None:                # 4xx or 5xx: judged by status, no answers
+    ...
+elif verdict.answers["rate_limited"] >= 0.5:
+    await asyncio.sleep(3)                         # and load it again
+elif verdict.is_consent_wall:
+    found = await page.find_element(role="button", name="/^(accept|aceptar|akzeptieren)/i")
+    await found[0].click()
+```
+
+Every verdict prints a line. One the crawler acts on says `retry` and what it
+does about it, and the page's last verdict says `keep` or `skip`, so the two
+cookie walls show up twice and a rate-limited page once per try. `decision` is
+the `judge()` call alone, `total` the page so far, load and any retries
+included. A page that answered 4xx or 5xx is judged by its status without
+asking Jev, so it shows the status instead of a decision time:
+
+```
+keep   en.wikipedia.org/wiki/Headless_browser        article                 decision 0.25s  total  0.53s
+keep   en.wikipedia.org/wiki/Web_scraping            article                 decision 0.29s  total  0.58s
+keep   developer.mozilla.org/en-US/docs/Web/API/Fet  docs                    decision 0.24s  total  0.59s
+keep   docs.python.org/3/library/asyncio.html        docs                    decision 0.27s  total  0.66s
+keep   quotes.toscrape.com/js/                       listing                 decision 0.15s  total  0.91s
+keep   books.toscrape.com/catalogue/a-light-in-the-  product                 decision 0.16s  total  1.18s
+keep   lobste.rs/                                    listing                 decision 0.14s  total  0.91s
+keep   www.spiegel.de/                               listing                 decision 0.30s  total  1.01s
+keep   news.ycombinator.com/                         listing                 decision 0.16s  total  1.09s
+keep   news.ycombinator.com/newest                   listing                 decision 0.14s  total  1.07s
+keep   github.com/lightpanda-io/browser              docs                    decision 0.22s  total  1.64s
+skip   news.ycombinator.com/login                    login wall              decision 0.14s  total  0.68s
+skip   www.g2.com/                                   blocked                 http 403        total  0.35s
+skip   www.wsj.com/                                  login wall              http 401        total  0.46s
+skip   www.economist.com/leaders/2024/01/04/what-to  blocked                 http 403        total  0.25s
+retry  www.20minutes.fr/                             consent wall            decision 0.19s  total  1.39s  -> accept cookies
+skip   stackoverflow.com/questions/231767/what-does  blocked                 http 403        total  0.23s
+skip   www.zeit.de/index                             blocked                 http 403        total  0.07s
+skip   github.com/settings/profile                   login wall              decision 0.18s  total  1.39s
+skip   www.linkedin.com/feed/                        login wall              decision 0.17s  total  1.26s
+skip   www.npmjs.com/search?q=xqzzzvqkplorbt         blocked                 http 403        total  0.39s
+keep   pypi.org/project/lightpanda/                  product                 decision 0.22s  total  1.06s
+retry  www.elmundo.es/                               consent wall            decision 0.18s  total  2.76s  -> accept cookies
+skip   web.whatsapp.com/                             unsupported browser     decision 0.15s  total  1.05s
+skip   www.python.org/no-such-page                   error page              http 404        total  0.46s
+skip   arxiv.org/abs/1706.03762                      blocked                 http 403        total  0.07s
+skip   en.wikipedia.org/w/index.php?search=xqzzzvqk  empty catalog           decision 0.17s  total  1.22s
+skip   github.com/search?q=xqzzzvqkplorbt&type=repo  empty catalog           decision 0.35s  total  1.73s
+skip   www.ebay.com/sch/i.html?_nkw=xqzzzvqkplorbt   blocked                 http 403        total  0.77s
+skip   github.com/lightpanda-io/does-not-exist       error page              http 404        total  1.23s
+keep   www.elmundo.es/                               other                   decision 0.16s  total  5.04s
+keep   www.20minutes.fr/                             listing                 decision 0.15s  total  6.62s
+
+30 pages in 8.2s with 6 crawlers (34.7s of page time): 14 kept, 16 skipped
+Jev: 22 calls, median 0.18s, p90 0.30s
+skipped: blocked 7, login wall 4, empty catalog 2, error page 2, unsupported browser 1
+acted:   accept cookies 2
+```
+
+What the walls actually showed: El Mundo's and 20 Minutes' cookie walls are
+popups over the front page that one click on the accept button clears, Zeit's
+is a German notice that it reserves its content against data mining, arXiv's
+is a bare Varnish 403, eBay's is "Something went wrong on our end", and Stack
+Overflow's is empty. Hacker News rate-limits three tabs opened at once, and
+says so in a sentence the crawler had no rule for.
+
+Sites change and the model is not deterministic, so a run differs a little:
+how often Hacker News pushes back, or whether a challenge page scores as
+`blocked` or `captcha`. Each crawler drives its own session, and the browser
+loads their pages in parallel. Known misses: Zillow's home page scores as an
+empty search, and Le Monde's front page leans paywall (0.71).
+
+Runs like `classify_pages.py`, from a release or from this checkout:
+
+```bash
+uv run examples/triage_crawl.py
+LIGHTPANDA_BIN=../browser/zig-out/bin/lightpanda uv run python examples/triage_crawl.py
+```

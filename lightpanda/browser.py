@@ -17,7 +17,7 @@ import json
 import os
 import re
 import subprocess
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
@@ -56,6 +56,107 @@ class PageResult(str):
         self.http_status = page_state.get("httpStatus")
         self.title = page_state.get("title") or None
         return self
+
+
+class PageVerdict:
+    """What :meth:`Session.judge` found: is this page worth reading?
+
+    Every preset of the ``classify`` tool, asked in one call. Each is a bool,
+    true when the model's probability reaches the threshold; ``scores`` keeps
+    the probabilities themselves (None where the model gave no answer). The
+    browser decides which presets there are: one added after this release
+    still appears in ``scores`` and as an attribute.
+
+    More than one can be true: a cookie banner can sit on top of a login wall,
+    and a bot block is usually an error page too. :attr:`reason` names the
+    strongest one.
+
+    The model is not deterministic, so the same page can score a little
+    differently from one call to the next, and a score near the threshold can
+    land on either side of it.
+
+    ```python
+    verdict = page.judge()
+    if not verdict.ok:
+        print("skipping:", verdict.reason)  # is_paywall
+    verdict.scores["is_blocked"]        # 0.03
+    ```
+
+    Questions passed to :meth:`Session.judge` are asked in the same call, and
+    their answers land in :attr:`answers`.
+
+    A page that answered 4xx or 5xx is judged by its status alone, without
+    asking the model: :attr:`http_status` holds it, the check it names is
+    true, and every score and answer is None.
+    """
+
+    is_blocked: bool
+    """The page is behind a CAPTCHA, a Cloudflare challenge or a bot block."""
+    is_captcha: bool
+    """A CAPTCHA or human verification challenge covers the content."""
+    is_consent_wall: bool
+    """A cookie consent banner covers the content."""
+    is_empty_catalog: bool
+    """A search or filter found nothing: no results, no matches, 0 items."""
+    is_error_page: bool
+    """An error, such as page not found, stands in for the content."""
+    is_login_wall: bool
+    """A sign-in form or prompt stands in for the content."""
+    is_paywall: bool
+    """A subscription or payment prompt hides or cuts off the content."""
+    is_unsupported_browser: bool
+    """The site says this browser is unsupported, or that JavaScript must be
+    enabled: its scripts failed or rejected Lightpanda."""
+    is_loading: bool
+    """The page says it is still loading (spinners, placeholders, loading
+    text). A page that is blank while it loads says nothing, so this misses it."""
+    scores: dict[str, float | None]
+    """Each check's probability, keyed by its attribute name."""
+    answers: dict
+    """The answers to the questions passed to :meth:`Session.judge`, keyed as
+    asked and shaped as :meth:`Session.classify` returns them. Empty when none
+    were passed."""
+    http_status: int | None
+    """The 4xx or 5xx status that decided the verdict without the model, or
+    None when the model was asked."""
+
+    def __init__(self, answers: dict, threshold: float, asked: Iterable[str] = ()):
+        asked = set(asked)
+        self.answers = {key: answers.get(key) for key in asked}
+        self.scores = {_snake(preset): score for preset, score in answers.items() if preset not in asked}
+        for attr, score in self.scores.items():
+            setattr(self, attr, score is not None and score >= threshold)
+        self.http_status = None
+
+    @classmethod
+    def _from_status(cls, http_status: int, asked: Iterable[str]) -> PageVerdict:
+        checks = [attr for attr, kind in cls.__annotations__.items() if kind == "bool"]
+        verdict = cls(dict.fromkeys([*checks, *asked]), 0.5, asked)
+        verdict.http_status = http_status
+        setattr(verdict, _STATUS_CHECKS.get(http_status, "is_error_page"), True)
+        return verdict
+
+    @property
+    def ok(self) -> bool:
+        """True when no check fired."""
+        return not any(getattr(self, attr) for attr in self.scores)
+
+    @property
+    def reason(self) -> str | None:
+        """The check that fired with the highest score, e.g. ``"is_paywall"``,
+        to answer "why skip this page?" in one word. None when :attr:`ok`."""
+        fired = [attr for attr in self.scores if getattr(self, attr)]
+        return max(fired, key=self.scores.__getitem__, default=None)
+
+    def __repr__(self) -> str:
+        fired = ", ".join(f"{attr}={self.scores[attr]}" for attr in self.scores if getattr(self, attr))
+        return f"PageVerdict({fired})"
+
+
+# Of 1,781 pages that answered 4xx or 5xx in the classifier's crawl, the model
+# found none worth reading, so judge() skips them without asking it. The
+# statuses that say why name their check; any other names an error page.
+_STATUS_CHECKS = {401: "is_login_wall", 402: "is_paywall", 403: "is_blocked", 429: "is_blocked"}
 
 
 def _snake(name: str) -> str:
@@ -141,6 +242,8 @@ class Session(SessionMethods):
         self._snake_map = browser._snake_map
         self._id = session_id
         self._closed = False
+        # The status of the page the last navigation or action left us on.
+        self._http_status: int | None = None
 
         self._client.request(
             "initialize",
@@ -204,6 +307,7 @@ class Session(SessionMethods):
         # older binaries send only the sentence, which still falls through.
         page_state = result.get("structuredContent")
         if page_state is not None:
+            self._http_status = page_state.get("httpStatus")
             return PageResult(text, page_state)
         try:
             parsed = json.loads(text)
@@ -212,6 +316,37 @@ class Session(SessionMethods):
         if name in _ELEMENT_TOOLS and isinstance(parsed, list):
             return [Element(node, self) for node in parsed]
         return parsed
+
+    def judge(self, *, questions: dict | None = None, threshold: float = 0.5) -> PageVerdict:
+        """Judge whether the page is worth reading: blocked, a login wall, a
+        paywall, an error page and the rest of the ``classify`` presets, in a
+        single call.
+
+        Your own questions can ride along in that call instead of a second
+        :meth:`classify`, which costs a whole round trip to the model; their
+        answers land in :attr:`PageVerdict.answers`:
+
+        ```python
+        verdict = page.judge(questions={"has_price": "Does the page show a price?"})
+        if verdict.ok:
+            print(verdict.answers["has_price"])   # 0.99
+        ```
+
+        A page that answered 4xx or 5xx is not worth reading whatever it says,
+        so its verdict comes from the status and the model is not asked; see
+        :attr:`PageVerdict.http_status`.
+
+        Args:
+            questions: Questions in the object form :meth:`classify` takes.
+            threshold: The probability at which a check counts as true.
+        """
+        if self._http_status is not None and self._http_status >= 400:
+            return PageVerdict._from_status(self._http_status, asked=questions or ())
+        if not questions:
+            # An empty questions object asks the browser for every preset.
+            return PageVerdict(self.call("classify", questions={}), threshold)
+        answers = self.call("classify", questions=questions, presets=True)
+        return PageVerdict(answers, threshold, asked=questions)
 
     def _resolve(self, attr: str) -> str | None:
         """The tool name behind a snake_case public attribute, if any."""
