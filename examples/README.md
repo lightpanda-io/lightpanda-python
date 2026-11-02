@@ -297,41 +297,41 @@ included. A page that answered 4xx or 5xx is judged by its status without
 asking Jev, so it shows the status instead of a decision time:
 
 ```
-keep   docs.python.org/3/library/asyncio.html        docs                    decision 0.23s  total  0.40s
-keep   en.wikipedia.org/wiki/Headless_browser        article                 decision 0.23s  total  0.52s
-keep   en.wikipedia.org/wiki/Web_scraping            article                 decision 0.23s  total  0.53s
-keep   quotes.toscrape.com/js/                       listing                 decision 0.14s  total  0.90s
-keep   books.toscrape.com/catalogue/a-light-in-the-  product                 decision 0.14s  total  1.17s
-keep   www.spiegel.de/                               listing                 decision 0.31s  total  0.85s
-keep   github.com/lightpanda-io/browser              docs                    decision 0.21s  total  1.07s
-keep   lobste.rs/                                    listing                 decision 0.15s  total  1.08s
-keep   news.ycombinator.com/                         listing                 decision 0.22s  total  1.15s
-keep   news.ycombinator.com/newest                   listing                 decision 0.15s  total  1.06s
-retry  www.20minutes.fr/                             consent wall            decision 0.15s  total  0.94s  -> accept cookies
-skip   news.ycombinator.com/login                    login wall              decision 0.14s  total  0.88s
-skip   www.g2.com/                                   blocked                 http 403        total  0.19s
-skip   github.com/settings/profile                   login wall              decision 0.17s  total  0.91s
-skip   www.economist.com/leaders/2024/01/04/what-to  blocked                 http 403        total  0.23s
-skip   www.wsj.com/                                  login wall              http 401        total  0.59s
+keep   en.wikipedia.org/wiki/Headless_browser        article                 decision 0.25s  total  0.53s
+keep   en.wikipedia.org/wiki/Web_scraping            article                 decision 0.29s  total  0.58s
+keep   developer.mozilla.org/en-US/docs/Web/API/Fet  docs                    decision 0.24s  total  0.59s
+keep   docs.python.org/3/library/asyncio.html        docs                    decision 0.27s  total  0.66s
+keep   quotes.toscrape.com/js/                       listing                 decision 0.15s  total  0.91s
+keep   books.toscrape.com/catalogue/a-light-in-the-  product                 decision 0.16s  total  1.18s
+keep   lobste.rs/                                    listing                 decision 0.14s  total  0.91s
+keep   www.spiegel.de/                               listing                 decision 0.30s  total  1.01s
+keep   news.ycombinator.com/                         listing                 decision 0.16s  total  1.09s
+keep   news.ycombinator.com/newest                   listing                 decision 0.14s  total  1.07s
+keep   github.com/lightpanda-io/browser              docs                    decision 0.22s  total  1.64s
+skip   news.ycombinator.com/login                    login wall              decision 0.14s  total  0.68s
+skip   www.g2.com/                                   blocked                 http 403        total  0.35s
+skip   www.wsj.com/                                  login wall              http 401        total  0.46s
+skip   www.economist.com/leaders/2024/01/04/what-to  blocked                 http 403        total  0.25s
+retry  www.20minutes.fr/                             consent wall            decision 0.19s  total  1.39s  -> accept cookies
 skip   stackoverflow.com/questions/231767/what-does  blocked                 http 403        total  0.23s
-skip   www.zeit.de/index                             blocked                 http 403        total  0.09s
-skip   www.linkedin.com/feed/                        login wall              decision 0.15s  total  1.47s
-retry  www.elmundo.es/                               consent wall            decision 0.18s  total  2.60s  -> accept cookies
-keep   developer.mozilla.org/en-US/docs/Web/API/Fet  docs                    decision 3.66s  total  4.03s
-skip   www.npmjs.com/search?q=xqzzzvqkplorbt         blocked                 http 403        total  0.42s
-keep   pypi.org/project/lightpanda/                  product                 decision 0.15s  total  1.29s
-skip   web.whatsapp.com/                             unsupported browser     decision 0.16s  total  1.05s
-skip   github.com/search?q=xqzzzvqkplorbt&type=repo  empty catalog           decision 0.19s  total  1.20s
-skip   arxiv.org/abs/1706.03762                      blocked                 http 403        total  0.06s
-skip   www.python.org/no-such-page                   error page              http 404        total  1.04s
-skip   www.ebay.com/sch/i.html?_nkw=xqzzzvqkplorbt   blocked                 http 403        total  0.38s
-skip   github.com/lightpanda-io/does-not-exist       error page              http 404        total  1.03s
-skip   en.wikipedia.org/w/index.php?search=xqzzzvqk  empty catalog           decision 0.17s  total  2.75s
-keep   www.20minutes.fr/                             listing                 decision 0.17s  total  6.16s
-keep   www.elmundo.es/                               other                   decision 0.17s  total  8.07s
+skip   www.zeit.de/index                             blocked                 http 403        total  0.07s
+skip   github.com/settings/profile                   login wall              decision 0.18s  total  1.39s
+skip   www.linkedin.com/feed/                        login wall              decision 0.17s  total  1.26s
+skip   www.npmjs.com/search?q=xqzzzvqkplorbt         blocked                 http 403        total  0.39s
+keep   pypi.org/project/lightpanda/                  product                 decision 0.22s  total  1.06s
+retry  www.elmundo.es/                               consent wall            decision 0.18s  total  2.76s  -> accept cookies
+skip   web.whatsapp.com/                             unsupported browser     decision 0.15s  total  1.05s
+skip   www.python.org/no-such-page                   error page              http 404        total  0.46s
+skip   arxiv.org/abs/1706.03762                      blocked                 http 403        total  0.07s
+skip   en.wikipedia.org/w/index.php?search=xqzzzvqk  empty catalog           decision 0.17s  total  1.22s
+skip   github.com/search?q=xqzzzvqkplorbt&type=repo  empty catalog           decision 0.35s  total  1.73s
+skip   www.ebay.com/sch/i.html?_nkw=xqzzzvqkplorbt   blocked                 http 403        total  0.77s
+skip   github.com/lightpanda-io/does-not-exist       error page              http 404        total  1.23s
+keep   www.elmundo.es/                               other                   decision 0.16s  total  5.04s
+keep   www.20minutes.fr/                             listing                 decision 0.15s  total  6.62s
 
-30 pages in 9.7s with 6 crawlers (41.1s of page time): 14 kept, 16 skipped
-Jev: 22 calls, median 0.17s, p90 0.29s
+30 pages in 8.2s with 6 crawlers (34.7s of page time): 14 kept, 16 skipped
+Jev: 22 calls, median 0.18s, p90 0.30s
 skipped: blocked 7, login wall 4, empty catalog 2, error page 2, unsupported browser 1
 acted:   accept cookies 2
 ```
