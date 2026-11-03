@@ -102,7 +102,8 @@ def test_judge(classify_browser, fixture_url):
         page.goto(url=f"{fixture_url}/index.html")
         verdict = page.judge()
         assert verdict.is_blocked and verdict.is_paywall and not verdict.ok
-        assert set(verdict.scores) >= {"is_blocked", "is_login_wall", "is_unsupported_browser"}
+        assert set(verdict.scores) >= {"is_blocked", "is_login_wall", "is_unsupported_browser", "is_rate_limited"}
+        assert verdict.is_age_gate and verdict.is_region_blocked
         assert set(verdict.scores.values()) == {0.9}
         assert verdict.reason in verdict.scores
         assert page.judge(threshold=0.95).ok
