@@ -37,7 +37,7 @@ class SessionMethods:
         """
         return self.call("callPageTool", name=name, arguments=arguments)
     def classify(self, *, questions: str | dict | list, selector: str | None = None, presets: bool | None = None) -> Any:
-        """Classify the page or an element subtree using TypeSafe System One (Jev). `questions` is a JSON array of categories (returns the one that fits), or a JSON object of questions keyed by the name each answer comes back under: `true` for a preset (isBlocked, isCaptcha, isConsentWall, isEmptyCatalog, isErrorPage, isLoginWall, isPaywall, isUnsupportedBrowser, isLoading; an empty object `{}` asks all of them), a string for a yes/no question (returns its probability), `{question, options}` for a choice, or `{question, levels}` for a score on 2-10 levels ordered low to high (returns the `score` between level indices, the nearest `level`, and per-level `probabilities`). A missing answer is null.
+        """Classify the page or an element subtree using TypeSafe System One (Jev). `questions` is a JSON array of categories (returns the one that fits), or a JSON object of questions keyed by the name each answer comes back under: `true` for a preset (isBlocked, isCaptcha, isConsentWall, isEmptyCatalog, isErrorPage, isLoginWall, isPaywall, isUnsupportedBrowser, isLoading, isAgeGate, isRegionBlocked, isRateLimited; an empty object `{}` asks all of them), a string for a yes/no question (returns its probability), `{question, options}` for a choice, or `{question, levels}` for a score on 2-10 levels ordered low to high (returns the `score` between level indices, the nearest `level`, and per-level `probabilities`). A missing answer is null.
 
         Args:
             questions: JSON string: array of categories, or object of questions (`{}` for every preset)
@@ -350,7 +350,7 @@ class SessionMethods:
         """
         return self.call("setChecked", checked=checked, selector=selector, backend_node_id=backend_node_id)
     def structured_data(self, *, url: str | None = None, timeout: int | None = None) -> Any:
-        """Page metadata as JSON: `jsonLd` (each JSON-LD block as a string), `openGraph`, `twitterCard`, `meta` and `links` (key/value lists), plus `alternate` (hreflang variants) and `linkHeaders` (relations from the HTTP Link header) when present. Empty sections come back as empty arrays. Use it for publisher-declared facts such as product price, article author or canonical URL before scraping the visible text for them. If a url is provided, it navigates there first.
+        """Page metadata as JSON: `jsonLd` (each JSON-LD block as a string), `openGraph`, `twitterCard`, `meta` and `links` (key/value lists), plus `microdata` (itemscope items as `{type, id, properties}`, every property value an array), `alternate` (hreflang variants) and `linkHeaders` (relations from the HTTP Link header) when present. Empty sections come back as empty arrays. Use it for publisher-declared facts such as product price, article author or canonical URL before scraping the visible text for them. If a url is provided, it navigates there first.
 
         Args:
             url: Optional URL to navigate to before processing. An empty string is treated as omitted.
@@ -549,7 +549,7 @@ class AsyncSessionMethods:
         """
         return await self.call("callPageTool", name=name, arguments=arguments)
     async def classify(self, *, questions: str | dict | list, selector: str | None = None, presets: bool | None = None) -> Any:
-        """Classify the page or an element subtree using TypeSafe System One (Jev). `questions` is a JSON array of categories (returns the one that fits), or a JSON object of questions keyed by the name each answer comes back under: `true` for a preset (isBlocked, isCaptcha, isConsentWall, isEmptyCatalog, isErrorPage, isLoginWall, isPaywall, isUnsupportedBrowser, isLoading; an empty object `{}` asks all of them), a string for a yes/no question (returns its probability), `{question, options}` for a choice, or `{question, levels}` for a score on 2-10 levels ordered low to high (returns the `score` between level indices, the nearest `level`, and per-level `probabilities`). A missing answer is null.
+        """Classify the page or an element subtree using TypeSafe System One (Jev). `questions` is a JSON array of categories (returns the one that fits), or a JSON object of questions keyed by the name each answer comes back under: `true` for a preset (isBlocked, isCaptcha, isConsentWall, isEmptyCatalog, isErrorPage, isLoginWall, isPaywall, isUnsupportedBrowser, isLoading, isAgeGate, isRegionBlocked, isRateLimited; an empty object `{}` asks all of them), a string for a yes/no question (returns its probability), `{question, options}` for a choice, or `{question, levels}` for a score on 2-10 levels ordered low to high (returns the `score` between level indices, the nearest `level`, and per-level `probabilities`). A missing answer is null.
 
         Args:
             questions: JSON string: array of categories, or object of questions (`{}` for every preset)
@@ -862,7 +862,7 @@ class AsyncSessionMethods:
         """
         return await self.call("setChecked", checked=checked, selector=selector, backend_node_id=backend_node_id)
     async def structured_data(self, *, url: str | None = None, timeout: int | None = None) -> Any:
-        """Page metadata as JSON: `jsonLd` (each JSON-LD block as a string), `openGraph`, `twitterCard`, `meta` and `links` (key/value lists), plus `alternate` (hreflang variants) and `linkHeaders` (relations from the HTTP Link header) when present. Empty sections come back as empty arrays. Use it for publisher-declared facts such as product price, article author or canonical URL before scraping the visible text for them. If a url is provided, it navigates there first.
+        """Page metadata as JSON: `jsonLd` (each JSON-LD block as a string), `openGraph`, `twitterCard`, `meta` and `links` (key/value lists), plus `microdata` (itemscope items as `{type, id, properties}`, every property value an array), `alternate` (hreflang variants) and `linkHeaders` (relations from the HTTP Link header) when present. Empty sections come back as empty arrays. Use it for publisher-declared facts such as product price, article author or canonical URL before scraping the visible text for them. If a url is provided, it navigates there first.
 
         Args:
             url: Optional URL to navigate to before processing. An empty string is treated as omitted.

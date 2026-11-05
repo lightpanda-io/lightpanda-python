@@ -61,7 +61,6 @@ URLS = [
 ]
 
 QUESTIONS = {
-    "rate_limited": "Does the page say we sent too many requests and should slow down or retry later?",
     "kind": {
         "question": "What kind of page is this?",
         "options": ["product", "listing", "article", "docs", "search", "other"],
@@ -90,16 +89,9 @@ async def judge(page):
     return verdict, decision
 
 
-def rate_limited(verdict):
-    # A 4xx or 5xx page is judged by its status alone, so our question has no answer.
-    if verdict.http_status is not None:
-        return verdict.http_status == 429
-    return verdict.answers["rate_limited"] >= 0.5
-
-
 def describe(verdict):
     """The page's kind when it is worth reading, else why not."""
-    if rate_limited(verdict):
+    if verdict.is_rate_limited:  # name it even when a block fired beside it
         return "rate limited"
     if verdict.ok:
         return verdict.answers["kind"]["choice"]
@@ -117,7 +109,7 @@ async def visit(page, url):
         if action:
             actions.append(action)
             status, note = paint("retry", "yellow"), paint(f"  -> {action}{detail}", "yellow")
-        elif verdict.ok and not rate_limited(verdict):
+        elif verdict.ok:
             status, note = paint("keep ", "green"), ""
         else:
             status, note = paint("skip ", "red"), ""
@@ -132,7 +124,7 @@ async def visit(page, url):
     verdict, decision = await judge(page)
 
     for attempt in (1, 2):
-        if not rate_limited(verdict):
+        if not verdict.is_rate_limited:
             break
         show(verdict, decision, "back off", f" {3 * attempt}s")
         await asyncio.sleep(3 * attempt)
@@ -167,7 +159,7 @@ async def triage(browser, slots, url):
             print(f"{paint('fail ', 'red')}  {url.split('://', 1)[1][:44]:<44}  {err}")
             return "failed", [], perf_counter() - start
         took = perf_counter() - start
-    outcome = "kept" if verdict.ok and not rate_limited(verdict) else describe(verdict)
+    outcome = "kept" if verdict.ok else describe(verdict)
     return outcome, actions, took
 
 

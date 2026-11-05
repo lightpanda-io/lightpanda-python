@@ -270,19 +270,17 @@ The same `judge()` call over 30 real pages, six at a time in one browser. The
 verdict decides what the crawler does next: back off when the site says we are
 going too fast, accept a cookie wall, wait for a page that is still loading,
 and then look again; or keep the page, or skip it and say why. "Too fast" is
-our own question, asked in the same call as the wall checks:
+one of the checks, set by a 429 or by a page that says so in words; the kind of
+page is our own question, asked in the same call:
 
 ```python
 QUESTIONS = {
-    "rate_limited": "Does the page say we sent too many requests and should slow down or retry later?",
     "kind": {"question": "What kind of page is this?",
              "options": ["product", "listing", "article", "docs", "search", "other"]},
 }
 
 verdict = await page.judge(questions=QUESTIONS)
-if verdict.http_status is not None:                # 4xx or 5xx: judged by status, no answers
-    ...
-elif verdict.answers["rate_limited"] >= 0.5:
+if verdict.is_rate_limited:
     await asyncio.sleep(3)                         # and load it again
 elif verdict.is_consent_wall:
     found = await page.find_element(role="button", name="/^(accept|aceptar|akzeptieren)/i")

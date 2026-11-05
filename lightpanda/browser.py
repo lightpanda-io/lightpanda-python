@@ -110,6 +110,15 @@ class PageVerdict:
     is_loading: bool
     """The page says it is still loading (spinners, placeholders, loading
     text). A page that is blank while it loads says nothing, so this misses it."""
+    is_age_gate: bool
+    """An age check covers the content, asking the visitor to confirm they are
+    an adult or to enter their date of birth."""
+    is_region_blocked: bool
+    """The site says the content is not available in the visitor's country or
+    region."""
+    is_rate_limited: bool
+    """The site says too many requests were sent, and to slow down or try again
+    later."""
     scores: dict[str, float | None]
     """Each check's probability, keyed by its attribute name."""
     answers: dict
@@ -156,7 +165,7 @@ class PageVerdict:
 # Of 1,781 pages that answered 4xx or 5xx in the classifier's crawl, the model
 # found none worth reading, so judge() skips them without asking it. The
 # statuses that say why name their check; any other names an error page.
-_STATUS_CHECKS = {401: "is_login_wall", 402: "is_paywall", 403: "is_blocked", 429: "is_blocked"}
+_STATUS_CHECKS = {401: "is_login_wall", 402: "is_paywall", 403: "is_blocked", 429: "is_rate_limited"}
 
 
 def _snake(name: str) -> str:
