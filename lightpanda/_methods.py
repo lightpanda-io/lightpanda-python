@@ -21,7 +21,7 @@ class SessionMethods:
         raise NotImplementedError
 
     def accept_cookies(self, *, prefer: str | None = None, selectors: list | None = None) -> Any:
-        """Dismiss the cookie consent banner on the current page: the browser offers the banner's own controls to TypeSafe System One (Jev), clicks the one it picks, and re-reads the page to check the banner went. Returns JSON — `dismissed` is what was clicked, `verified` whether the page agreed afterwards, `selectors` the controls clicked in order, and `reason` why nothing happened when nothing did. A click that leaves a banner up (a confirmation, say) is followed by one more pick. A page with nothing to click costs no model call; passing `selectors` clicks them in order and asks nothing, which is how a recorded call replays. Otherwise needs TYPESAFE_API_KEY.
+        """Dismiss the cookie consent banner on the current page: the browser offers the banner's own controls to a decision model (Gemini Decisions or TypeSafe System One), clicks the one it picks, and re-reads the page to check the banner went. Returns JSON — `dismissed` is what was clicked, `verified` whether the page agreed afterwards, `selectors` the controls clicked in order, and `reason` why nothing happened when nothing did. A click that leaves a banner up (a confirmation, say) is followed by one more pick. A page with nothing to click costs no model call; passing `selectors` clicks them in order and asks nothing, which is how a recorded call replays. Otherwise needs TYPESAFE_API_KEY, or GOOGLE_API_KEY/GEMINI_API_KEY with LIGHTPANDA_DECISION_PROVIDER=gemini.
 
         Args:
             prefer: Whether to accept the cookies or refuse all non-essential ones. Defaults to 'accept'.
@@ -37,10 +37,10 @@ class SessionMethods:
         """
         return self.call("callPageTool", name=name, arguments=arguments)
     def classify(self, *, questions: str | dict | list, selector: str | None = None, presets: bool | None = None) -> Any:
-        """Classify the page or an element subtree using TypeSafe System One (Jev). `questions` is a JSON array of categories (returns the one that fits), or a JSON object of questions keyed by the name each answer comes back under: `true` for a preset (isBlocked, isCaptcha, isConsentWall, isEmptyCatalog, isErrorPage, isLoginWall, isPaywall, isUnsupportedBrowser, isLoading, isAgeGate, isRegionBlocked, isRateLimited; an empty object `{}` asks all of them), a string for a yes/no question (returns its probability), `{question, options}` for a choice, or `{question, levels}` for a score on 2-10 levels ordered low to high (returns the `score` between level indices, the nearest `level`, and per-level `probabilities`). A missing answer is null.
+        """Classify the page or an element subtree using a decision model (Gemini Decisions or TypeSafe System One). `questions` is a JSON array of categories (returns the one that fits), or a JSON object of questions keyed by the name each answer comes back under: `true` for a preset (isBlocked, isCaptcha, isConsentWall, isEmptyCatalog, isErrorPage, isLoginWall, isPaywall, isUnsupportedBrowser, isLoading, isAgeGate, isRegionBlocked, isRateLimited; an empty object `{}` asks all of them), a string for a yes/no question (returns its probability), `{question, options}` for a choice, or `{question, levels}` for a score on 2-10 levels ordered low to high (returns the `score` between level indices, the nearest `level`, and per-level `probabilities`). A missing answer is null.
 
         Args:
-            questions: JSON string: array of categories, or object of questions (`{}` for every preset)
+            questions: JSON object or array of questions, or a JSON-encoded string of the same (`{}` for every preset)
             selector: Optional CSS selector to classify a specific element subtree instead of the full page
             presets: Also ask every preset in the same call, each answered under its own name beside the questions. Needs the object form.
         """
@@ -219,7 +219,7 @@ class SessionMethods:
         """
         return self.call("links", limit=limit, url=url, timeout=timeout)
     def login(self, *, password: str, username: str | None = None, username_selector: str | None = None, password_selector: str | None = None, submit_selector: str | None = None, next_selector: str | None = None, decide_only: bool | None = None) -> Any:
-        """Sign in on the current page. The browser collects the candidate fields and sign-in controls, asks TypeSafe System One (Jev) only what the markup leaves ambiguous, fills the credentials, submits, and re-reads the page to say whether it worked. A password is only ever typed into an `input[type=password]`, and credentials only go to an https (or loopback) page whose form posts to an https URL. Pass `$LP_*` placeholders rather than literal secrets: they resolve inside the browser and never appear in the result. Returns JSON with the selectors it used, so a recorded call replays them with no model call. Otherwise needs TYPESAFE_API_KEY.
+        """Sign in on the current page. The browser collects the candidate fields and sign-in controls, asks a decision model (Gemini Decisions or TypeSafe System One) only what the markup leaves ambiguous, fills the credentials, submits, and re-reads the page to say whether it worked. A password is only ever typed into an `input[type=password]`, and credentials only go to an https (or loopback) page whose form posts to an https URL. Pass `$LP_*` placeholders rather than literal secrets: they resolve inside the browser and never appear in the result. Returns JSON with the selectors it used, so a recorded call replays them with no model call. Otherwise needs TYPESAFE_API_KEY, or GOOGLE_API_KEY/GEMINI_API_KEY with LIGHTPANDA_DECISION_PROVIDER=gemini.
 
         Args:
             password: The password, as a $LP_* placeholder.
@@ -252,8 +252,15 @@ class SessionMethods:
         """
         return self.call("nodeDetails", backend_node_id=backend_node_id)
     def page_tools(self) -> Any:
-        """List the tools the current page registers for agents through WebMCP (`navigator.modelContext.registerTool`), as JSON with each tool's `name`, `description`, `inputSchema` and hints. A page tool runs the site's own code and can be more reliable than driving its UI; call one with `callPageTool`. Many pages register their tools after `load`: if the list is empty on a page you expect to have tools, call `waitForState` with `networkidle` and list again."""
+        """List the tools the current page registers for agents through WebMCP (`navigator.modelContext.registerTool`), as JSON with each tool's `name`, `description`, `inputSchema` and hints. A page tool runs the site's own code and can be more reliable than driving its UI; call one with `callPageTool`. Other tool results already show the page's tools, with their schemas, whenever the set changes; call this to list them again. Many pages register their tools after `load`: on a page you expect to have tools, `waitForState` with `networkidle` gives them time."""
         return self.call("pageTools")
+    def popups(self, *, follow: int | None = None) -> Any:
+        """Windows the current page opened (`window.open` or target=_blank), main page first. A click that opens a window is followed automatically; a window opened late, after a fetch or a timer, lands here. `follow` makes that window current — subsequent tools act on it; pass the main page's id to switch back. Windows live until the page closes.
+
+        Args:
+            follow: Id from a previous popups call. Makes that window current for subsequent tool calls.
+        """
+        return self.call("popups", follow=follow)
     def press(self, *, key: str, selector: str | None = None, backend_node_id: int | None = None) -> PageResult:
         """Press a keyboard key, dispatching keydown and keyup events. Use key names like 'Enter', 'Tab', 'Escape', 'ArrowDown', 'Backspace', or single characters like 'a', '1'. Common shorthand is normalized: 'enter'/'return' → 'Enter', 'esc' → 'Escape', 'up'/'down'/'left'/'right' → 'Arrow*', 'space' → ' '. Pressing 'Enter' on a form input or submit button triggers implicit form submission.
 
@@ -271,7 +278,7 @@ class SessionMethods:
         """
         return self.call("press", key=key, selector=selector, backend_node_id=backend_node_id)
     def run(self, *, script: str | None = None, path: str | None = None, timeout: int | None = None) -> Any:
-        """Run a Lightpanda agent script in this session, as `lightpanda run` does, and return its console output followed by the value it returns. Pass the source as `script`, or the `path` of a file `save` wrote. The script drives pages through `const page = new Page(); await page.goto(url);` and the builtins as methods on `page`; `$LP_*` placeholders are resolved. Pages the script opens are closed when it ends; cookies and storage stay in the session, so a login carries over to the next call. Script variables do not carry over. A thrown error, a failed step or the timeout ends the script and is reported as an error after the output so far.
+        """Run a Lightpanda agent script in this session, as `lightpanda run` does, and return its console output followed by the value it returns. Pass the source as `script`, or the `path` of a file `save` wrote. The script drives pages through `const page = new Page(); await page.goto(url);` and the builtins as methods on `page`; `$LP_*` placeholders are resolved. To read several URLs, make one `new Page()` per URL and `await Promise.all(pages.map((p, i) => p.goto(urls[i])))` so they load in parallel, then read each with `page.extract` or `page.evaluate`. Pages the script opens are closed when it ends; cookies and storage stay in the session, so a login carries over to the next call. Script variables do not carry over. A thrown error, a failed step or the timeout ends the script and is reported as an error after the output so far.
 
         Args:
             script: The agent script source, as `save` writes it or `lightpanda run` takes it. Pass this or `path`.
@@ -357,8 +364,8 @@ class SessionMethods:
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return self.call("structuredData", url=url, timeout=timeout)
-    def tree(self, *, url: str | None = None, timeout: int | None = None, backend_node_id: int | None = None, max_depth: int | None = None, max_bytes: int | None = None) -> Any:
-        """Semantic outline of the page as indented text: one node per line with its role, accessible name, value and backendNodeId, plus checked state and select options with the selected one marked. The default first read of an unfamiliar page; input and select values are already here, so no `nodeDetails` call is needed to read them. Pass `backendNodeId` to scope to a subtree and `maxDepth` to survey structure before going deeper. Read it again after any page-changing action, since the DOM it describes may have changed; use `nodeDetails` to turn a backendNodeId into a CSS selector for actions.
+    def tree(self, *, url: str | None = None, timeout: int | None = None, backend_node_id: int | None = None, max_depth: int | None = None, max_bytes: int | None = None, delta: bool | None = None) -> Any:
+        """Semantic outline of the page as indented text: one node per line with its role, accessible name, value and backendNodeId, plus checked state and select options with the selected one marked. The default first read of an unfamiliar page; input and select values are already here, so no `nodeDetails` call is needed to read them. Pass `backendNodeId` to scope to a subtree and `maxDepth` to survey structure before going deeper. Read it again after any page-changing action, since the DOM it describes may have changed; pass `delta` then to get only what changed since the last `tree` call. Use `nodeDetails` to turn a backendNodeId into a CSS selector for actions.
 
         Args:
             url: Optional URL to navigate to before fetching the semantic tree. An empty string is treated as omitted.
@@ -366,8 +373,9 @@ class SessionMethods:
             backend_node_id: Optional backend node ID to get the tree for a specific element instead of the document root. 0 is treated as omitted.
             max_depth: Optional maximum depth of the tree to return. Useful for exploring high-level structure first.
             max_bytes: Optional cap on output size in bytes. Past it, lines are kept by priority (alerts, dialogs, invalid fields and the focused element, then controls and named nodes, then text; list entries breadth-first), and dropped lines are counted in a '[+N more @id]' marker. id is the backendNodeId of the node holding them, often a list item or list that isn't printed itself: call tree with backendNodeId=id to read them.
+            delta: Optional. Return only what changed since the last tree returned in full, by backendNodeId: '- id' removed with its subtree, '~ line' changed, '+ line' added; a new or moved line ends with its place, (after id) or (first in id), and the added lines under it follow indented. One line says when nothing changed. The first call, a navigation, another backendNodeId, maxDepth or maxBytes, or a change to most of the tree return the full tree under a '[full tree]' line.
         """
-        return self.call("tree", url=url, timeout=timeout, backend_node_id=backend_node_id, max_depth=max_depth, max_bytes=max_bytes)
+        return self.call("tree", url=url, timeout=timeout, backend_node_id=backend_node_id, max_depth=max_depth, max_bytes=max_bytes, delta=delta)
     def wait_for_script(self, *, script: str, timeout: int | None = None) -> Any:
         """Wait until a JS expression returns truthy. Re-evaluates on each tick of the event loop. Use for synchronization beyond what CSS selectors can express — e.g. `window.dataLoaded === true`, `document.readyState === 'complete'`, `document.querySelectorAll('.row').length >= 5`.
 
@@ -519,21 +527,22 @@ class ElementMethods:
             - `title`: Document title. Empty or absent when the page has none.
         """
         return self.call("setChecked", checked=checked)
-    def tree(self, *, max_depth: int | None = None, max_bytes: int | None = None) -> Any:
-        """Semantic outline of the page as indented text: one node per line with its role, accessible name, value and backendNodeId, plus checked state and select options with the selected one marked. The default first read of an unfamiliar page; input and select values are already here, so no `nodeDetails` call is needed to read them. Pass `backendNodeId` to scope to a subtree and `maxDepth` to survey structure before going deeper. Read it again after any page-changing action, since the DOM it describes may have changed; use `nodeDetails` to turn a backendNodeId into a CSS selector for actions.
+    def tree(self, *, max_depth: int | None = None, max_bytes: int | None = None, delta: bool | None = None) -> Any:
+        """Semantic outline of the page as indented text: one node per line with its role, accessible name, value and backendNodeId, plus checked state and select options with the selected one marked. The default first read of an unfamiliar page; input and select values are already here, so no `nodeDetails` call is needed to read them. Pass `backendNodeId` to scope to a subtree and `maxDepth` to survey structure before going deeper. Read it again after any page-changing action, since the DOM it describes may have changed; pass `delta` then to get only what changed since the last `tree` call. Use `nodeDetails` to turn a backendNodeId into a CSS selector for actions.
 
         Args:
             max_depth: Optional maximum depth of the tree to return. Useful for exploring high-level structure first.
             max_bytes: Optional cap on output size in bytes. Past it, lines are kept by priority (alerts, dialogs, invalid fields and the focused element, then controls and named nodes, then text; list entries breadth-first), and dropped lines are counted in a '[+N more @id]' marker. id is the backendNodeId of the node holding them, often a list item or list that isn't printed itself: call tree with backendNodeId=id to read them.
+            delta: Optional. Return only what changed since the last tree returned in full, by backendNodeId: '- id' removed with its subtree, '~ line' changed, '+ line' added; a new or moved line ends with its place, (after id) or (first in id), and the added lines under it follow indented. One line says when nothing changed. The first call, a navigation, another backendNodeId, maxDepth or maxBytes, or a change to most of the tree return the full tree under a '[full tree]' line.
         """
-        return self.call("tree", max_depth=max_depth, max_bytes=max_bytes)
+        return self.call("tree", max_depth=max_depth, max_bytes=max_bytes, delta=delta)
 
 class AsyncSessionMethods:
     async def call(self, tool: str, **kwargs: Any) -> Any:
         raise NotImplementedError
 
     async def accept_cookies(self, *, prefer: str | None = None, selectors: list | None = None) -> Any:
-        """Dismiss the cookie consent banner on the current page: the browser offers the banner's own controls to TypeSafe System One (Jev), clicks the one it picks, and re-reads the page to check the banner went. Returns JSON — `dismissed` is what was clicked, `verified` whether the page agreed afterwards, `selectors` the controls clicked in order, and `reason` why nothing happened when nothing did. A click that leaves a banner up (a confirmation, say) is followed by one more pick. A page with nothing to click costs no model call; passing `selectors` clicks them in order and asks nothing, which is how a recorded call replays. Otherwise needs TYPESAFE_API_KEY.
+        """Dismiss the cookie consent banner on the current page: the browser offers the banner's own controls to a decision model (Gemini Decisions or TypeSafe System One), clicks the one it picks, and re-reads the page to check the banner went. Returns JSON — `dismissed` is what was clicked, `verified` whether the page agreed afterwards, `selectors` the controls clicked in order, and `reason` why nothing happened when nothing did. A click that leaves a banner up (a confirmation, say) is followed by one more pick. A page with nothing to click costs no model call; passing `selectors` clicks them in order and asks nothing, which is how a recorded call replays. Otherwise needs TYPESAFE_API_KEY, or GOOGLE_API_KEY/GEMINI_API_KEY with LIGHTPANDA_DECISION_PROVIDER=gemini.
 
         Args:
             prefer: Whether to accept the cookies or refuse all non-essential ones. Defaults to 'accept'.
@@ -549,10 +558,10 @@ class AsyncSessionMethods:
         """
         return await self.call("callPageTool", name=name, arguments=arguments)
     async def classify(self, *, questions: str | dict | list, selector: str | None = None, presets: bool | None = None) -> Any:
-        """Classify the page or an element subtree using TypeSafe System One (Jev). `questions` is a JSON array of categories (returns the one that fits), or a JSON object of questions keyed by the name each answer comes back under: `true` for a preset (isBlocked, isCaptcha, isConsentWall, isEmptyCatalog, isErrorPage, isLoginWall, isPaywall, isUnsupportedBrowser, isLoading, isAgeGate, isRegionBlocked, isRateLimited; an empty object `{}` asks all of them), a string for a yes/no question (returns its probability), `{question, options}` for a choice, or `{question, levels}` for a score on 2-10 levels ordered low to high (returns the `score` between level indices, the nearest `level`, and per-level `probabilities`). A missing answer is null.
+        """Classify the page or an element subtree using a decision model (Gemini Decisions or TypeSafe System One). `questions` is a JSON array of categories (returns the one that fits), or a JSON object of questions keyed by the name each answer comes back under: `true` for a preset (isBlocked, isCaptcha, isConsentWall, isEmptyCatalog, isErrorPage, isLoginWall, isPaywall, isUnsupportedBrowser, isLoading, isAgeGate, isRegionBlocked, isRateLimited; an empty object `{}` asks all of them), a string for a yes/no question (returns its probability), `{question, options}` for a choice, or `{question, levels}` for a score on 2-10 levels ordered low to high (returns the `score` between level indices, the nearest `level`, and per-level `probabilities`). A missing answer is null.
 
         Args:
-            questions: JSON string: array of categories, or object of questions (`{}` for every preset)
+            questions: JSON object or array of questions, or a JSON-encoded string of the same (`{}` for every preset)
             selector: Optional CSS selector to classify a specific element subtree instead of the full page
             presets: Also ask every preset in the same call, each answered under its own name beside the questions. Needs the object form.
         """
@@ -731,7 +740,7 @@ class AsyncSessionMethods:
         """
         return await self.call("links", limit=limit, url=url, timeout=timeout)
     async def login(self, *, password: str, username: str | None = None, username_selector: str | None = None, password_selector: str | None = None, submit_selector: str | None = None, next_selector: str | None = None, decide_only: bool | None = None) -> Any:
-        """Sign in on the current page. The browser collects the candidate fields and sign-in controls, asks TypeSafe System One (Jev) only what the markup leaves ambiguous, fills the credentials, submits, and re-reads the page to say whether it worked. A password is only ever typed into an `input[type=password]`, and credentials only go to an https (or loopback) page whose form posts to an https URL. Pass `$LP_*` placeholders rather than literal secrets: they resolve inside the browser and never appear in the result. Returns JSON with the selectors it used, so a recorded call replays them with no model call. Otherwise needs TYPESAFE_API_KEY.
+        """Sign in on the current page. The browser collects the candidate fields and sign-in controls, asks a decision model (Gemini Decisions or TypeSafe System One) only what the markup leaves ambiguous, fills the credentials, submits, and re-reads the page to say whether it worked. A password is only ever typed into an `input[type=password]`, and credentials only go to an https (or loopback) page whose form posts to an https URL. Pass `$LP_*` placeholders rather than literal secrets: they resolve inside the browser and never appear in the result. Returns JSON with the selectors it used, so a recorded call replays them with no model call. Otherwise needs TYPESAFE_API_KEY, or GOOGLE_API_KEY/GEMINI_API_KEY with LIGHTPANDA_DECISION_PROVIDER=gemini.
 
         Args:
             password: The password, as a $LP_* placeholder.
@@ -764,8 +773,15 @@ class AsyncSessionMethods:
         """
         return await self.call("nodeDetails", backend_node_id=backend_node_id)
     async def page_tools(self) -> Any:
-        """List the tools the current page registers for agents through WebMCP (`navigator.modelContext.registerTool`), as JSON with each tool's `name`, `description`, `inputSchema` and hints. A page tool runs the site's own code and can be more reliable than driving its UI; call one with `callPageTool`. Many pages register their tools after `load`: if the list is empty on a page you expect to have tools, call `waitForState` with `networkidle` and list again."""
+        """List the tools the current page registers for agents through WebMCP (`navigator.modelContext.registerTool`), as JSON with each tool's `name`, `description`, `inputSchema` and hints. A page tool runs the site's own code and can be more reliable than driving its UI; call one with `callPageTool`. Other tool results already show the page's tools, with their schemas, whenever the set changes; call this to list them again. Many pages register their tools after `load`: on a page you expect to have tools, `waitForState` with `networkidle` gives them time."""
         return await self.call("pageTools")
+    async def popups(self, *, follow: int | None = None) -> Any:
+        """Windows the current page opened (`window.open` or target=_blank), main page first. A click that opens a window is followed automatically; a window opened late, after a fetch or a timer, lands here. `follow` makes that window current — subsequent tools act on it; pass the main page's id to switch back. Windows live until the page closes.
+
+        Args:
+            follow: Id from a previous popups call. Makes that window current for subsequent tool calls.
+        """
+        return await self.call("popups", follow=follow)
     async def press(self, *, key: str, selector: str | None = None, backend_node_id: int | None = None) -> PageResult:
         """Press a keyboard key, dispatching keydown and keyup events. Use key names like 'Enter', 'Tab', 'Escape', 'ArrowDown', 'Backspace', or single characters like 'a', '1'. Common shorthand is normalized: 'enter'/'return' → 'Enter', 'esc' → 'Escape', 'up'/'down'/'left'/'right' → 'Arrow*', 'space' → ' '. Pressing 'Enter' on a form input or submit button triggers implicit form submission.
 
@@ -783,7 +799,7 @@ class AsyncSessionMethods:
         """
         return await self.call("press", key=key, selector=selector, backend_node_id=backend_node_id)
     async def run(self, *, script: str | None = None, path: str | None = None, timeout: int | None = None) -> Any:
-        """Run a Lightpanda agent script in this session, as `lightpanda run` does, and return its console output followed by the value it returns. Pass the source as `script`, or the `path` of a file `save` wrote. The script drives pages through `const page = new Page(); await page.goto(url);` and the builtins as methods on `page`; `$LP_*` placeholders are resolved. Pages the script opens are closed when it ends; cookies and storage stay in the session, so a login carries over to the next call. Script variables do not carry over. A thrown error, a failed step or the timeout ends the script and is reported as an error after the output so far.
+        """Run a Lightpanda agent script in this session, as `lightpanda run` does, and return its console output followed by the value it returns. Pass the source as `script`, or the `path` of a file `save` wrote. The script drives pages through `const page = new Page(); await page.goto(url);` and the builtins as methods on `page`; `$LP_*` placeholders are resolved. To read several URLs, make one `new Page()` per URL and `await Promise.all(pages.map((p, i) => p.goto(urls[i])))` so they load in parallel, then read each with `page.extract` or `page.evaluate`. Pages the script opens are closed when it ends; cookies and storage stay in the session, so a login carries over to the next call. Script variables do not carry over. A thrown error, a failed step or the timeout ends the script and is reported as an error after the output so far.
 
         Args:
             script: The agent script source, as `save` writes it or `lightpanda run` takes it. Pass this or `path`.
@@ -869,8 +885,8 @@ class AsyncSessionMethods:
             timeout: Optional timeout in milliseconds. Defaults to 10000.
         """
         return await self.call("structuredData", url=url, timeout=timeout)
-    async def tree(self, *, url: str | None = None, timeout: int | None = None, backend_node_id: int | None = None, max_depth: int | None = None, max_bytes: int | None = None) -> Any:
-        """Semantic outline of the page as indented text: one node per line with its role, accessible name, value and backendNodeId, plus checked state and select options with the selected one marked. The default first read of an unfamiliar page; input and select values are already here, so no `nodeDetails` call is needed to read them. Pass `backendNodeId` to scope to a subtree and `maxDepth` to survey structure before going deeper. Read it again after any page-changing action, since the DOM it describes may have changed; use `nodeDetails` to turn a backendNodeId into a CSS selector for actions.
+    async def tree(self, *, url: str | None = None, timeout: int | None = None, backend_node_id: int | None = None, max_depth: int | None = None, max_bytes: int | None = None, delta: bool | None = None) -> Any:
+        """Semantic outline of the page as indented text: one node per line with its role, accessible name, value and backendNodeId, plus checked state and select options with the selected one marked. The default first read of an unfamiliar page; input and select values are already here, so no `nodeDetails` call is needed to read them. Pass `backendNodeId` to scope to a subtree and `maxDepth` to survey structure before going deeper. Read it again after any page-changing action, since the DOM it describes may have changed; pass `delta` then to get only what changed since the last `tree` call. Use `nodeDetails` to turn a backendNodeId into a CSS selector for actions.
 
         Args:
             url: Optional URL to navigate to before fetching the semantic tree. An empty string is treated as omitted.
@@ -878,8 +894,9 @@ class AsyncSessionMethods:
             backend_node_id: Optional backend node ID to get the tree for a specific element instead of the document root. 0 is treated as omitted.
             max_depth: Optional maximum depth of the tree to return. Useful for exploring high-level structure first.
             max_bytes: Optional cap on output size in bytes. Past it, lines are kept by priority (alerts, dialogs, invalid fields and the focused element, then controls and named nodes, then text; list entries breadth-first), and dropped lines are counted in a '[+N more @id]' marker. id is the backendNodeId of the node holding them, often a list item or list that isn't printed itself: call tree with backendNodeId=id to read them.
+            delta: Optional. Return only what changed since the last tree returned in full, by backendNodeId: '- id' removed with its subtree, '~ line' changed, '+ line' added; a new or moved line ends with its place, (after id) or (first in id), and the added lines under it follow indented. One line says when nothing changed. The first call, a navigation, another backendNodeId, maxDepth or maxBytes, or a change to most of the tree return the full tree under a '[full tree]' line.
         """
-        return await self.call("tree", url=url, timeout=timeout, backend_node_id=backend_node_id, max_depth=max_depth, max_bytes=max_bytes)
+        return await self.call("tree", url=url, timeout=timeout, backend_node_id=backend_node_id, max_depth=max_depth, max_bytes=max_bytes, delta=delta)
     async def wait_for_script(self, *, script: str, timeout: int | None = None) -> Any:
         """Wait until a JS expression returns truthy. Re-evaluates on each tick of the event loop. Use for synchronization beyond what CSS selectors can express — e.g. `window.dataLoaded === true`, `document.readyState === 'complete'`, `document.querySelectorAll('.row').length >= 5`.
 
@@ -1031,11 +1048,12 @@ class AsyncElementMethods:
             - `title`: Document title. Empty or absent when the page has none.
         """
         return await self.call("setChecked", checked=checked)
-    async def tree(self, *, max_depth: int | None = None, max_bytes: int | None = None) -> Any:
-        """Semantic outline of the page as indented text: one node per line with its role, accessible name, value and backendNodeId, plus checked state and select options with the selected one marked. The default first read of an unfamiliar page; input and select values are already here, so no `nodeDetails` call is needed to read them. Pass `backendNodeId` to scope to a subtree and `maxDepth` to survey structure before going deeper. Read it again after any page-changing action, since the DOM it describes may have changed; use `nodeDetails` to turn a backendNodeId into a CSS selector for actions.
+    async def tree(self, *, max_depth: int | None = None, max_bytes: int | None = None, delta: bool | None = None) -> Any:
+        """Semantic outline of the page as indented text: one node per line with its role, accessible name, value and backendNodeId, plus checked state and select options with the selected one marked. The default first read of an unfamiliar page; input and select values are already here, so no `nodeDetails` call is needed to read them. Pass `backendNodeId` to scope to a subtree and `maxDepth` to survey structure before going deeper. Read it again after any page-changing action, since the DOM it describes may have changed; pass `delta` then to get only what changed since the last `tree` call. Use `nodeDetails` to turn a backendNodeId into a CSS selector for actions.
 
         Args:
             max_depth: Optional maximum depth of the tree to return. Useful for exploring high-level structure first.
             max_bytes: Optional cap on output size in bytes. Past it, lines are kept by priority (alerts, dialogs, invalid fields and the focused element, then controls and named nodes, then text; list entries breadth-first), and dropped lines are counted in a '[+N more @id]' marker. id is the backendNodeId of the node holding them, often a list item or list that isn't printed itself: call tree with backendNodeId=id to read them.
+            delta: Optional. Return only what changed since the last tree returned in full, by backendNodeId: '- id' removed with its subtree, '~ line' changed, '+ line' added; a new or moved line ends with its place, (after id) or (first in id), and the added lines under it follow indented. One line says when nothing changed. The first call, a navigation, another backendNodeId, maxDepth or maxBytes, or a change to most of the tree return the full tree under a '[full tree]' line.
         """
-        return await self.call("tree", max_depth=max_depth, max_bytes=max_bytes)
+        return await self.call("tree", max_depth=max_depth, max_bytes=max_bytes, delta=delta)
