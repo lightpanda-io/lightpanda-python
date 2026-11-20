@@ -48,7 +48,9 @@ def test_selenium_bidi_session(webdriver_server, fixture_url):
         assert len(nodes) == 3
 
         headline = driver.script.execute("() => document.querySelector('#headline').textContent", context_id=context)
-        assert headline["value"] == "Hello from the fixture"
+        if isinstance(headline, dict):  # Selenium < 4.53 returns the raw BiDi RemoteValue
+            headline = headline["value"]
+        assert headline == "Hello from the fixture"
 
         result = driver.script.evaluate(expression="document.title", target={"context": context}, await_promise=False)
         assert result["result"]["value"] == "Fixture Home"
